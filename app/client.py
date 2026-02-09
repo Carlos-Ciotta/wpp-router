@@ -44,6 +44,7 @@ def send_interactive_buttons(to: str, body_text: str, buttons: list):
         {"id": "outros", "title": "Outros"}
     ]
     """
+    #teste
     url = f"https://graph.facebook.com/v24.0/{PHONE_ID}/messages"
     headers = {
         "Authorization": f"Bearer {TOKEN}",

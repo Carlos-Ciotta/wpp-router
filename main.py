@@ -255,6 +255,6 @@ async def webhook(req: Request):
     if handle_message_and_create_lead(phone, text, session, now):
         return {"ok": True}
 
-    # Fallback
+    # Fallback a
     print("⚠️ Unhandled flow state")
     return {"ok": True}

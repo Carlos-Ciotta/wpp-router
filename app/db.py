@@ -6,7 +6,7 @@ load_dotenv()
 
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client["whatsapp_bot"]
-
+#teste
 sessions = db.sessions
 sellers = db.sellers
 leads = db.leads
