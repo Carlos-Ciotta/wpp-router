@@ -3,3 +3,4 @@ uvicorn
 pymongo
 requests
 python-dotenv
+jinja2
