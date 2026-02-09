@@ -99,11 +99,6 @@ def handle_menu_selection(phone: str, text: str, session: dict, now: datetime) -
     Processa seleção de menu (botão ou texto).
     Retorna True se processou, False se deve continuar.
     """
-    # Verifica timeout de menu
-    if now - session["last_menu"] < MENU_TIMEOUT:
-        print("🔒 Menu timeout active, ignoring message")
-        return True
-    
     if session["step"] != "menu":
         return False
     
@@ -129,6 +124,11 @@ def handle_menu_selection(phone: str, text: str, session: dict, now: datetime) -
         )
         send_message(phone, "Escreva sua mensagem:")
     else:
+        # Verifica timeout apenas para opção inválida (evitar spam de menu)
+        if now - session["last_menu"] < MENU_TIMEOUT:
+            print("🔒 Menu timeout active for invalid option, ignoring")
+            return True
+        
         print("❌ Invalid option")
         send_interactive_buttons(
             phone,
@@ -138,6 +138,11 @@ def handle_menu_selection(phone: str, text: str, session: dict, now: datetime) -
                 {"id": "financeiro", "title": "Financeiro"},
                 {"id": "outros", "title": "Outros"}
             ]
+        )
+        # Atualiza last_menu ao reenviar
+        sessions.update_one(
+            {"phone": phone},
+            {"$set": {"last_menu": now}}
         )
     
     return True
