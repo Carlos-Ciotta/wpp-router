@@ -13,7 +13,7 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 MENU_TIMEOUT = timedelta(minutes=40)
-LEAD_ACTIVE_TIME = timedelta(minutes=40)
+LEAD_ACTIVE_TIME = timedelta(minutes=5)  # Lead expira após 5 minutos
 CLEANUP_TIME = timedelta(days=1)
 
 # ========== FUNÇÕES DE UTILIDADE ==========
@@ -45,6 +45,7 @@ def extract_message_data(msg: dict) -> tuple:
 def handle_lead_forwarding(phone: str, text: str, now: datetime) -> bool:
     """
     Verifica se existe lead ativo e salva mensagem no DB temporário.
+    NÃO envia mensagens para o responsável automaticamente.
     Retorna True se lead existe, False caso contrário.
     """
     lead = leads.find_one({"client": phone, "status": "pending"})
@@ -53,7 +54,16 @@ def handle_lead_forwarding(phone: str, text: str, now: datetime) -> bool:
     if not lead:
         return False
     
-    print(f"📨 Lead exists! Saving message to pending DB")
+    # Verifica se lead expirou (5 minutos)
+    if now - lead["created_at"] > LEAD_ACTIVE_TIME:
+        print("⏰ Lead expired (5 min), closing")
+        leads.update_one(
+            {"_id": lead["_id"]},
+            {"$set": {"status": "closed"}}
+        )
+        return False  # Lead expirado, trata como novo cliente
+    
+    print(f"📨 Lead exists! Saving message to pending DB (no notification sent)")
     
     # Salva mensagem no histórico
     messages.insert_one({
@@ -62,7 +72,7 @@ def handle_lead_forwarding(phone: str, text: str, now: datetime) -> bool:
         "timestamp": now
     })
     
-    # Busca pending_response existente ou cria novo
+    # Busca pending_response existente
     pending = pending_responses.find_one({
         "client": phone,
         "seller": lead["seller"],
@@ -70,7 +80,7 @@ def handle_lead_forwarding(phone: str, text: str, now: datetime) -> bool:
     })
     
     if pending:
-        # Adiciona mensagem ao array existente
+        # Adiciona mensagem ao array existente (sem notificar)
         pending_responses.update_one(
             {"_id": pending["_id"]},
             {
@@ -78,19 +88,10 @@ def handle_lead_forwarding(phone: str, text: str, now: datetime) -> bool:
                 "$set": {"last_update": now}
             }
         )
-        print(f"📝 Message added to existing pending response")
-    else:
-        # Cria novo pending_response
-        pending_responses.insert_one({
-            "client": phone,
-            "seller": lead["seller"],
-            "sector": lead["sector"],
-            "messages": [{"text": text, "timestamp": now}],
-            "respondida": False,
-            "created_at": now,
-            "last_update": now
-        })
-        print(f"✅ New pending response created")
+        print(f"📝 Message added to existing pending response (silent)")
+        
+        # Envia confirmação para o cliente
+        send_message(phone, "✅ Mensagem recebida! Aguarde o contato do responsável.")
     
     return True
 
@@ -106,7 +107,8 @@ def handle_new_client(phone: str, now: datetime) -> None:
     
     send_interactive_buttons(
         phone,
-        "Olá! Qual setor você deseja falar?",
+        "Seja bem vindo ao atendimento da Comercial Ciotta Materiais de Construção"\
+            "Por favor, escolha uma das opções abaixo para direcionarmos seu atendimento:",
         [
             {"id": "comercial", "title": "Comercial"},
             {"id": "financeiro", "title": "Financeiro"},
@@ -218,14 +220,15 @@ def handle_message_and_create_lead(phone: str, text: str, session: dict, now: da
     base_url = os.getenv("SERVER_URL", "http://localhost:8000")
     response_link = f"{base_url}/response/{str(pending_id)}"
     
-    # Notifica vendedor com link
+    # Notifica vendedor com link (ÚNICA notificação - mensagens seguintes não são enviadas)
     send_message(
         seller["phone"],
         f"🔔 Novo lead aguardando resposta!\n\n"
         f"📱 Cliente: {phone}\n"
         f"📂 Setor: {session['choice']}\n"
-        f"💬 Mensagem: {text}\n\n"
-        f"👉 Clique para responder:\n{response_link}"
+        f"💬 Primeira mensagem: {text}\n\n"
+        f"👉 Clique para responder:\n{response_link}\n\n"
+        f"⏱️ Lead expira em 5 minutos"
     )
     
     # Confirma para cliente
