@@ -39,9 +39,15 @@ async def webhook(req: Request):
         return {"ok": True}
 
     phone = msg["from"].lstrip("+")  # Remove + se existir
+    
+    # Normaliza número brasileiro: se tiver 12 dígitos (55 + DDD com 2 + número com 8), adiciona o 9
+    if phone.startswith("55") and len(phone) == 12:
+        phone = phone[:4] + "9" + phone[4:]  # Adiciona 9 após o DDD
+        print(f"📱 Phone normalized: {phone}")
+    
     text = msg.get("text", {}).get("body", "")
     now = datetime.utcnow()
-    print(f"📱 Phone: {phone} (cleaned) | Text: '{text}'")
+    print(f"📱 Phone: {phone} | Text: '{text}'")
 
     lead = leads.find_one({"client": phone, "status": "pending"})
     print(f"🔍 Lead check: {lead}")
