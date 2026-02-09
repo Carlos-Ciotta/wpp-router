@@ -11,3 +11,4 @@ sessions = db.sessions
 sellers = db.sellers
 leads = db.leads
 messages = db.messages
+pending_responses = db.pending_responses  # Nova collection para mensagens aguardando resposta
