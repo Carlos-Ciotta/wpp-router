@@ -38,10 +38,10 @@ async def webhook(req: Request):
         print("⚠️ No message in payload, ignoring")
         return {"ok": True}
 
-    phone = msg["from"]
+    phone = msg["from"].lstrip("+")  # Remove + se existir
     text = msg.get("text", {}).get("body", "")
     now = datetime.utcnow()
-    print(f"📱 Phone: {phone} | Text: '{text}'")
+    print(f"📱 Phone: {phone} (cleaned) | Text: '{text}'")
 
     lead = leads.find_one({"client": phone, "status": "pending"})
     print(f"🔍 Lead check: {lead}")
@@ -135,7 +135,7 @@ async def webhook(req: Request):
         send_message(
             seller["phone"],
             f"Novo lead:\nCliente: {phone}\n"
-            f"Link direto:\nhttps://wa.me/{phone}"
+            f"Link direto:\nhttps://wa.me/+{phone}"
         )
 
         send_message(phone, "Um vendedor já recebeu sua mensagem.")
