@@ -122,7 +122,8 @@ def handle_menu_selection(phone: str, text: str, session: dict, now: datetime) -
             {"phone": phone},
             {"$set": {"step": "message", "choice": sector}}
         )
-        send_message(phone, "Escreva sua mensagem:")
+        send_message(phone, "Logo um responsável do setor escolhido irá te atender. " \
+        "Por enquanto, por favor, envie sua mensagem:")
     else:
         # Verifica timeout apenas para opção inválida (evitar spam de menu)
         if now - session["last_menu"] < MENU_TIMEOUT:
