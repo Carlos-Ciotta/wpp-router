@@ -7,7 +7,7 @@ TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 
 def send_message(to: str, text: str):
-    url = f"https://graph.facebook.com/v18.0/{PHONE_ID}/messages"
+    url = f"https://graph.facebook.com/v24.0/{PHONE_ID}/messages"
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
@@ -18,4 +18,7 @@ def send_message(to: str, text: str):
         "type": "text",
         "text": {"body": text}
     }
-    requests.post(url, json=payload, headers=headers)
+    
+    resp = requests.post(url, json=payload, headers=headers)
+    print(resp.status_code)
+    print(resp.text)
