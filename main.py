@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import PlainTextResponse
 from app.db import sessions, sellers, leads, messages
 from app.client import send_message
 from datetime import datetime, timedelta
@@ -12,10 +13,18 @@ MENU_TIMEOUT = timedelta(minutes=40)
 LEAD_ACTIVE_TIME = timedelta(minutes=40)
 
 @app.get("/webhook")
-def verify(hub_challenge: str = None, hub_verify_token: str = None):
-    if hub_verify_token == os.getenv("VERIFY_TOKEN"):
-        return int(hub_challenge)
-    return "Erro"
+async def verify_webhook(request:Request):
+    """Webhook verification handshake.
+
+    Must echo back hub.challenge when hub.verify_token matches configured token.
+    """
+    mode = request.query_params.get("hub.mode")
+    challenge = request.query_params.get("hub.challenge")
+    token = request.query_params.get("hub.verify_token")
+
+    if mode == "subscribe" and token == os.getenv("VERIFY_TOKEN") and challenge:
+        return PlainTextResponse(content=challenge, status_code=200)
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/webhook")
 async def webhook(req: Request):
