@@ -399,3 +399,55 @@ async def cleanup_old_responses():
     except Exception as e:
         print(f"❌ Error during cleanup: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/history")
+async def get_conversation_history():
+    """Retorna histórico de todas as conversas"""
+    try:
+        # Busca todos os leads
+        all_leads = list(leads.find().sort("created_at", -1))
+        
+        conversations = []
+        
+        for lead in all_leads:
+            # Busca mensagens relacionadas ao cliente
+            client_messages = list(messages.find(
+                {"client": lead["client"]}
+            ).sort("timestamp", 1))
+            
+            # Busca pending_response relacionado
+            pending = pending_responses.find_one({
+                "client": lead["client"],
+                "seller": lead["seller"]
+            })
+            
+            conversation = {
+                "client": lead["client"],
+                "seller": lead["seller"],
+                "sector": lead["sector"],
+                "status": lead["status"],
+                "created_at": lead["created_at"].isoformat(),
+                "messages": [
+                    {
+                        "text": msg["text"],
+                        "timestamp": msg["timestamp"].isoformat()
+                    }
+                    for msg in client_messages
+                ],
+                "pending_response": {
+                    "respondida": pending.get("respondida", False) if pending else None,
+                    "message_count": len(pending.get("messages", [])) if pending else 0
+                } if pending else None
+            }
+            
+            conversations.append(conversation)
+        
+        return {
+            "ok": True,
+            "total": len(conversations),
+            "conversations": conversations
+        }
+        
+    except Exception as e:
+        print(f"❌ Error fetching history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
