@@ -32,6 +32,7 @@ async def webhook(req: Request):
 
     try:
         msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        print(f"Received message: {msg}")
     except:
         return {"ok": True}
 
