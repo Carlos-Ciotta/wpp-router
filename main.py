@@ -135,7 +135,7 @@ async def webhook(req: Request):
         send_message(
             seller["phone"],
             f"Novo lead:\nCliente: {phone}\n"
-            f"Link direto:\nhttps://wa.me/+{phone}"
+            f"Link direto:\nhttps://wa.me/{phone}"
         )
 
         send_message(phone, "Um vendedor já recebeu sua mensagem.")
