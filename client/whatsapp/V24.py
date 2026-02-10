@@ -297,7 +297,7 @@ class WhatsAppClient:
         return self._send_request(payload)
  # ===== RECEBIMENTO DE MENSAGENS =====
     
-    async def verify_webhook(request:Request):
+    async def verify_webhook(self, request:Request):
         """Webhook verification handshake.
 
         Must echo back hub.challenge when hub.verify_token matches configured token.
