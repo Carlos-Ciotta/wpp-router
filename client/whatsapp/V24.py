@@ -580,3 +580,66 @@ class WhatsAppClient:
             "status": "read",
             "message_id": message_id
         }
+        return self._send_request(payload)
+
+    # ===== GESTÃO DE MÍDIA (UPLOAD/DOWNLOAD) =====
+
+    def get_media_url(self, media_id: str) -> Optional[str]:
+        """
+        Recupera a URL de download de uma mídia recebida pelo ID.
+        API: GET /v24.0/{media-id}
+        """
+        try:
+            url = f"https://graph.facebook.com/v24.0/{media_id}"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("url")
+        except Exception as e:
+            print(f"❌ Erro ao obter URL da mídia {media_id}: {e}")
+            return None
+
+    def download_media(self, media_url: str) -> Optional[bytes]:
+        """
+        Baixa o binário da mídia usando a URL obtida.
+        Requer header Authorization: Bearer {token}
+        """
+        try:
+            response = requests.get(media_url, headers=self.headers, timeout=60)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            print(f"❌ Erro ao baixar mídia: {e}")
+            return None
+
+    def upload_media(self, file_path: str, mime_type: str) -> Optional[str]:
+        """
+        Faz upload de arquivo local para WhatsApp -> Retorna ID.
+        API: POST /v24.0/{phone_id}/media
+        """
+        url = f"https://graph.facebook.com/v24.0/{self.phone_id}/media"
+        
+        try:
+            with open(file_path, "rb") as f:
+                # 'file' é o campo obrigatório para o binário
+                files = {"file": (file_path, f, mime_type)}
+                data = {"messaging_product": "whatsapp"}
+                
+                # Requests gerencia multipart boundary automaticamente se não setarmos Content-Type manual
+                # Mas precisamos do Authorization. Self.headers tem 'Content-Type': 'application/json', então criamos um novo header
+                headers_upload = {"Authorization": f"Bearer {self.wa_token}"}
+                
+                response = requests.post(
+                    url, 
+                    headers=headers_upload, 
+                    files=files, 
+                    data=data, 
+                    timeout=60
+                )
+                response.raise_for_status()
+                result = response.json()
+                print(f"✅ Mídia enviada! ID: {result.get('id')}")
+                return result.get('id')
+        except Exception as e:
+            print(f"❌ Erro upload média: {e}")
+            return None

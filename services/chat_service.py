@@ -24,7 +24,9 @@ class ChatService:
         if not working_hours:
             return False
             
-        now_dt = datetime.now()
+        # Ajuste para Horário de Brasília (Server Time - 3 horas)
+        now_dt = datetime.now() - timedelta(hours=3)
+        
         current_day = str(now_dt.weekday())  # 0=Monday, 6=Sunday
         current_time = now_dt.time()
         
