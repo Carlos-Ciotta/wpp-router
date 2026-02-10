@@ -46,6 +46,13 @@ class WhatsAppClient:
                 print(f"Response: {e.response.text}")
             raise
     
+    def _sanitize_phone(self, phone: str) -> str:
+        """Ajusta formatação do telefone (adiciona 9 para BR se necessário)"""
+        # Se for BR (55) e tiver 12 dígitos (55 + 2 DDD + 8 NUM), adiciona o 9
+        if phone and phone.startswith("55") and len(phone) == 12:
+            return f"{phone[:4]}9{phone[4:]}"
+        return phone
+
     def send_text(self, to: str, text: str, preview_url: bool = False) -> Dict[str, Any]:
         """
         Envia mensagem de texto
@@ -58,6 +65,8 @@ class WhatsAppClient:
         Returns:
             Resposta da API com message_id
         """
+        to = self._sanitize_phone(to)
+        
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -90,6 +99,7 @@ class WhatsAppClient:
         
         Note: Use image_url OU image_id, não ambos
         """
+        to = self._sanitize_phone(to)
         image_data = {}
         
         if image_id:
@@ -129,6 +139,7 @@ class WhatsAppClient:
             video_id: ID da mídia já enviada
             caption: Legenda (opcional)
         """
+        to = self._sanitize_phone(to)
         video_data = {}
         
         if video_id:
@@ -166,6 +177,7 @@ class WhatsAppClient:
             audio_url: URL do áudio
             audio_id: ID da mídia já enviada
         """
+        to = self._sanitize_phone(to)
         audio_data = {}
         
         if audio_id:
@@ -204,6 +216,7 @@ class WhatsAppClient:
             caption: Legenda (opcional)
             filename: Nome do arquivo (opcional)
         """
+        to = self._sanitize_phone(to)
         document_data = {}
         
         if document_id:
@@ -253,6 +266,8 @@ class WhatsAppClient:
                 {"id": "btn_nao", "title": "Não"}
             ]
         """
+        to = self._sanitize_phone(to)
+        
         if len(buttons) > 3:
             raise ValueError("Máximo de 3 botões permitidos")
         
