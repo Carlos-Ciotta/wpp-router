@@ -3,20 +3,26 @@ WhatsApp Cloud API v24.0 - Cliente para envio de mensagens
 Documentação: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
 """
 import requests
-import json
 from typing import List, Dict, Any, Optional
-from config import WHATSAPP_API_URL, WHATSAPP_TOKEN, WHATSAPP_PHONE_ID
+from core.environment import get_environment
+from fastapi import APIRouter, HTTPException, Body, Request, Depends
+from fastapi.responses import PlainTextResponse
 
-
+env = get_environment()
 class WhatsAppClient:
-    """Cliente para enviar mensagens via WhatsApp Cloud API v24.0"""
+    """Cliente para enviar e receber mensagens via WhatsApp Cloud API v24.0"""
     
-    def __init__(self, phone_id: str = None, token: str = None):
-        self.phone_id = phone_id or WHATSAPP_PHONE_ID
-        self.token = token or WHATSAPP_TOKEN
-        self.base_url = f"{WHATSAPP_API_URL}/{self.phone_id}/messages"
+    def __init__(self, 
+                 phone_id: str = None, 
+                 wa_token: str = None, 
+                 base_url: str = None,
+                 internal_token: str = None):
+        self.phone_id = phone_id
+        self.wa_token = wa_token
+        self._internal_token = internal_token
+        self.base_url = base_url
         self.headers = {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {self.wa_token}",
             "Content-Type": "application/json"
         }
     
@@ -289,127 +295,234 @@ class WhatsAppClient:
         
         print(f"📤 Enviando botões para {to}")
         return self._send_request(payload)
+ # ===== RECEBIMENTO DE MENSAGENS =====
     
-    def send_list(
-        self,
-        to: str,
-        body_text: str,
-        button_text: str,
-        sections: List[Dict[str, Any]],
-        header_text: str = None,
-        footer_text: str = None
-    ) -> Dict[str, Any]:
+    async def verify_webhook(request:Request):
+        """Webhook verification handshake.
+
+        Must echo back hub.challenge when hub.verify_token matches configured token.
         """
-        Envia mensagem com lista de opções
+        mode = request.query_params.get("hub.mode")
+        challenge = request.query_params.get("hub.challenge")
+        token = request.query_params.get("hub.verify_token")
+
+        if mode == "subscribe" and token == self._internal_token and challenge:
+            return PlainTextResponse(content=challenge, status_code=200)
+        raise HTTPException(status_code=403, detail="Verification failed")
+    
+    def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Processa notificações recebidas do webhook
         
         Args:
-            to: Número do destinatário
-            body_text: Texto principal
-            button_text: Texto do botão (ex: "Ver opções")
-            sections: Lista de seções com opções
-            header_text: Cabeçalho (opcional)
-            footer_text: Rodapé (opcional)
+            webhook_data: Dados JSON recebidos no POST do webhook
+        
+        Returns:
+            Lista de mensagens processadas
         
         Example:
-            sections = [{
-                "title": "Produtos",
-                "rows": [
-                    {"id": "prod1", "title": "Produto 1", "description": "Descrição"},
-                    {"id": "prod2", "title": "Produto 2"}
-                ]
-            }]
+            messages = client.process_webhook(request.json)
+            for msg in messages:
+                print(f"De: {msg['from']}, Tipo: {msg['type']}, Conteúdo: {msg['content']}")
         """
-        interactive_data = {
-            "type": "list",
-            "body": {
-                "text": body_text
-            },
-            "action": {
-                "button": button_text,
-                "sections": sections
+        messages = []
+        
+        try:
+            if "entry" not in webhook_data:
+                return messages
+            
+            for entry in webhook_data["entry"]:
+                if "changes" not in entry:
+                    continue
+                
+                for change in entry["changes"]:
+                    if change.get("field") != "messages":
+                        continue
+                    
+                    value = change.get("value", {})
+                    
+                    # Processa mensagens recebidas
+                    if "messages" in value:
+                        for message in value["messages"]:
+                            parsed_msg = self._parse_message(message, value.get("contacts", []))
+                            if parsed_msg:
+                                messages.append(parsed_msg)
+                    
+                    # Processa status de mensagens enviadas
+                    if "statuses" in value:
+                        for status in value["statuses"]:
+                            parsed_status = self._parse_status(status)
+                            if parsed_status:
+                                messages.append(parsed_status)
+            
+            return messages
+        
+        except Exception as e:
+            print(f"❌ Erro ao processar webhook: {e}")
+            return messages
+    
+    def _parse_message(self, message: Dict[str, Any], contacts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Parser interno para mensagens recebidas
+        
+        Returns:
+            Dict com: type, message_id, from, timestamp, from_name, content, context (se reply)
+        """
+        msg_type = message.get("type")
+        message_id = message.get("id")
+        from_number = message.get("from")
+        timestamp = message.get("timestamp")
+        
+        # Pega nome do contato
+        from_name = None
+        for contact in contacts:
+            if contact.get("wa_id") == from_number:
+                from_name = contact.get("profile", {}).get("name")
+                break
+        
+        # Contexto (resposta a outra mensagem)
+        context = None
+        if "context" in message:
+            context = {
+                "message_id": message["context"].get("id"),
+                "from": message["context"].get("from")
             }
+        
+        parsed = {
+            "event_type": "message",
+            "type": msg_type,
+            "message_id": message_id,
+            "from": from_number,
+            "from_name": from_name,
+            "timestamp": timestamp,
+            "context": context
         }
         
-        if header_text:
-            interactive_data["header"] = {
-                "type": "text",
-                "text": header_text
+        # Processa conteúdo por tipo
+        if msg_type == "text":
+            parsed["content"] = message.get("text", {}).get("body", "")
+        
+        elif msg_type == "image":
+            parsed["content"] = {
+                "id": message.get("image", {}).get("id"),
+                "mime_type": message.get("image", {}).get("mime_type"),
+                "sha256": message.get("image", {}).get("sha256"),
+                "caption": message.get("image", {}).get("caption")
             }
         
-        if footer_text:
-            interactive_data["footer"] = {
-                "text": footer_text
+        elif msg_type == "video":
+            parsed["content"] = {
+                "id": message.get("video", {}).get("id"),
+                "mime_type": message.get("video", {}).get("mime_type"),
+                "sha256": message.get("video", {}).get("sha256"),
+                "caption": message.get("video", {}).get("caption")
             }
         
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to,
-            "type": "interactive",
-            "interactive": interactive_data
+        elif msg_type == "audio":
+            parsed["content"] = {
+                "id": message.get("audio", {}).get("id"),
+                "mime_type": message.get("audio", {}).get("mime_type"),
+                "sha256": message.get("audio", {}).get("sha256"),
+                "voice": message.get("audio", {}).get("voice", False)
+            }
+        
+        elif msg_type == "document":
+            parsed["content"] = {
+                "id": message.get("document", {}).get("id"),
+                "mime_type": message.get("document", {}).get("mime_type"),
+                "sha256": message.get("document", {}).get("sha256"),
+                "filename": message.get("document", {}).get("filename"),
+                "caption": message.get("document", {}).get("caption")
+            }
+        
+        elif msg_type == "sticker":
+            parsed["content"] = {
+                "id": message.get("sticker", {}).get("id"),
+                "mime_type": message.get("sticker", {}).get("mime_type"),
+                "sha256": message.get("sticker", {}).get("sha256"),
+                "animated": message.get("sticker", {}).get("animated", False)
+            }
+        
+        elif msg_type == "location":
+            loc = message.get("location", {})
+            parsed["content"] = {
+                "latitude": loc.get("latitude"),
+                "longitude": loc.get("longitude"),
+                "name": loc.get("name"),
+                "address": loc.get("address")
+            }
+        
+        elif msg_type == "contacts":
+            parsed["content"] = message.get("contacts", [])
+        
+        elif msg_type == "button":
+            # Resposta a botão
+            parsed["content"] = {
+                "payload": message.get("button", {}).get("payload"),
+                "text": message.get("button", {}).get("text")
+            }
+        
+        elif msg_type == "interactive":
+            # Resposta a lista ou botão interativo
+            interactive = message.get("interactive", {})
+            interactive_type = interactive.get("type")
+            
+            if interactive_type == "button_reply":
+                parsed["content"] = {
+                    "id": interactive.get("button_reply", {}).get("id"),
+                    "title": interactive.get("button_reply", {}).get("title")
+                }
+            elif interactive_type == "list_reply":
+                parsed["content"] = {
+                    "id": interactive.get("list_reply", {}).get("id"),
+                    "title": interactive.get("list_reply", {}).get("title"),
+                    "description": interactive.get("list_reply", {}).get("description")
+                }
+        
+        else:
+            parsed["content"] = message.get(msg_type, {})
+        
+        print(f"📩 Mensagem recebida - De: {from_number} ({from_name}), Tipo: {msg_type}")
+        return parsed
+    
+    def _parse_status(self, status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Parser interno para status de mensagens enviadas
+        
+        Returns:
+            Dict com: event_type='status', message_id, recipient, status, timestamp
+        """
+        parsed = {
+            "event_type": "status",
+            "message_id": status.get("id"),
+            "recipient": status.get("recipient_id"),
+            "status": status.get("status"),  # sent, delivered, read, failed
+            "timestamp": status.get("timestamp")
         }
         
-        print(f"📤 Enviando lista para {to}")
-        return self._send_request(payload)
+        # Se houver erro
+        if "errors" in status:
+            parsed["errors"] = status["errors"]
+        
+        # Informações de preço (para mensagens cobradas)
+        if "pricing" in status:
+            parsed["pricing"] = status["pricing"]
+        
+        print(f"📊 Status recebido - Mensagem: {parsed['message_id']}, Status: {parsed['status']}")
+        return parsed
     
     def mark_as_read(self, message_id: str) -> Dict[str, Any]:
-        """Marca mensagem como lida"""
+        """
+        Marca uma mensagem como lida
+        
+        Args:
+            message_id: ID da mensagem recebida
+        
+        Returns:
+            Resposta da API
+        """
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
             "message_id": message_id
         }
-        
-        return self._send_request(payload)
-    
-    def get_media_url(self, media_id: str) -> str:
-        """
-        Obtém URL de download de uma mídia
-        
-        Args:
-            media_id: ID da mídia recebida no webhook
-        
-        Returns:
-            URL temporária para download
-        """
-        url = f"{WHATSAPP_API_URL}/{media_id}"
-        headers = {"Authorization": f"Bearer {self.token}"}
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("url")
-        except Exception as e:
-            print(f"❌ Erro ao obter URL da mídia: {e}")
-            raise
-    
-    def download_media(self, media_url: str, save_path: str) -> bool:
-        """
-        Faz download de uma mídia
-        
-        Args:
-            media_url: URL obtida via get_media_url()
-            save_path: Caminho para salvar o arquivo
-        
-        Returns:
-            True se sucesso, False se erro
-        """
-        headers = {"Authorization": f"Bearer {self.token}"}
-        
-        try:
-            response = requests.get(media_url, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
-            
-            print(f"✅ Mídia salva em: {save_path}")
-            return True
-        except Exception as e:
-            print(f"❌ Erro ao baixar mídia: {e}")
-            return False
-
-
-# Instância global para facilitar importação
-whatsapp_client = WhatsAppClient()

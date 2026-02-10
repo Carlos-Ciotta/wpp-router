@@ -5,19 +5,12 @@ class EnvironmentSettings(BaseSettings):
     # MongoDB
     DATABASE_URI: str
     DATABASE_NAME: str
-    # Redis
-    REDIS_URL: str
-    # WhatsApp Cloud API Configurações
-    WHATSAPP_API_VERSION = "v24.0"
-    WHATSAPP_API_URL = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}"
 
     # Credenciais (definir no .env)
-    WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-    WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
-    WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID")
+    WHATSAPP_PHONE_ID: str
+    WHATSAPP_TOKEN: str
+    WHATSAPP_INTERNAL_TOKEN:str
 
-    # Webhook
-    VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "meu_token_secreto_123")
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
