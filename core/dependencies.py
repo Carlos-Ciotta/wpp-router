@@ -15,7 +15,7 @@ env = get_environment()
 async def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
 	"""Retorna uma coleção do MongoDB."""
 	db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
-	return db.get_collection(collection_name)
+	return db[collection_name]
 
 async def get_message_repository():
 	"""Retorna uma instância do repositório de mensagens."""

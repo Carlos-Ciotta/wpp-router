@@ -28,7 +28,7 @@ class MongoManager:
             raise RuntimeError("MongoDB client not initialized. Call connect() first.")
         return self._client
 
-    def get_database(self, db_name: str = None):
+    def get_db(self, db_name: str = None):
         """Get database instance."""
         client = self.get_client()
         database_name = db_name or env.DATABASE_NAME
@@ -36,7 +36,7 @@ class MongoManager:
 
     def get_collection(self, collection_name: str, db_name: str = None):
         """Get collection instance."""
-        db = self.get_database(db_name)
+        db = self.get_db(db_name)
         return db[collection_name]
 
 
