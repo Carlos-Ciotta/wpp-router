@@ -14,11 +14,11 @@ class WhatsAppClient:
     """Cliente para enviar e receber mensagens via WhatsApp Cloud API v24.0"""
     
     def __init__(self, 
-                 phone_id: str = None, 
-                 wa_token: str = None, 
-                 base_url: str = None,
-                 internal_token: str = None,
-                 repository:MessageRepository = None):
+                 phone_id: str, 
+                 wa_token: str , 
+                 base_url: str ,
+                 internal_token: str ,
+                 repository:MessageRepository):
         self.phone_id = phone_id
         self._repo = repository
         self.wa_token = wa_token
