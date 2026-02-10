@@ -1,4 +1,6 @@
 from domain.attendants.attendant import Attendant
+from core.security import get_password_hash, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from datetime import timedelta
 
 class AttendantService():
     def __init__(self, repository) -> None:
@@ -6,10 +8,31 @@ class AttendantService():
     
     async def create_attendant(self, data:dict):
         try:
+            # Hash password before saving
+            if "password" in data:
+                data["password"] = get_password_hash(data["password"])
+                
             attendant = Attendant(**data)
-            return await self._repository.save(attendant.dict())
+            return await self._repository.save(attendant.model_dump(exclude={"_id"}))
         except Exception as e:
             raise Exception(f"Error creating attendant: {str(e)}")
+            
+    async def authenticate_attendant(self, login: str, password: str):
+        # We need a method to find by login in repo
+        attendant = await self._repository.find_by_login(login)
+        if not attendant:
+            return None
+        if not verify_password(password, attendant["password"]):
+            return None
+        return attendant
+        
+    async def create_token_for_attendant(self, attendant: dict):
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": attendant["login"], "sector": attendant["sector"]},
+            expires_delta=access_token_expires
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
     
     async def get_attendant(self, _id:str):
         try:

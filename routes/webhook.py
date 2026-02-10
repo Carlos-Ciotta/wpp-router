@@ -3,7 +3,8 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from typing import Optional, Dict, Any
 
 from client.whatsapp.V24 import WhatsAppClient
-from core.dependencies import get_clients
+from core.dependencies import get_clients, get_chat_service
+from services.chat_service import ChatService
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 
@@ -66,13 +67,21 @@ async def verify_webhook(request: Request, client: WhatsAppClient = Depends(get_
 
 
 @router.post("/webhook")
-async def receive_webhook(request: Request, client: WhatsAppClient = Depends(get_whatsapp_client)):
+async def receive_webhook(
+    request: Request, 
+    client: WhatsAppClient = Depends(get_whatsapp_client),
+    chat_service: ChatService = Depends(get_chat_service)
+):
     """Recebimento de notificações (POST)"""
     try:
         data = await request.json()
         
         # O processamento e salvamento é feito pelo client/repo
         messages = await client.process_webhook(data)
+        
+        # Processamento da lógica de chat (Automação, Menus, Atribuição)
+        for msg in messages:
+             await chat_service.process_incoming_message(msg)
         
         # Log simplificado
         if messages:

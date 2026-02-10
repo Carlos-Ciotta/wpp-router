@@ -23,3 +23,13 @@ class AttendantRepository():
     async def delete(self, _id:str):
         result = await self._collection.delete_one({"_id": ObjectId(_id)})
         return result.deleted_count
+
+    async def find_by_client_and_sector(self, client_phone: str, sector: str):
+        # Case insensitive sector search might be good, but strict for now
+        return await self._collection.find_one({
+            "clients": client_phone,
+            "sector": sector
+        })
+
+    async def find_by_login(self, login: str):
+        return await self._collection.find_one({"login": login})

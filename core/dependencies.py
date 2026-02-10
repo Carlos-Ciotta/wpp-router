@@ -4,6 +4,9 @@ from core.settings import settings
 from core.db import mongo_manager
 from core.environment import get_environment
 from repositories.message import MessageRepository
+from repositories.session import SessionRepository
+from repositories.attendant import AttendantRepository
+from services.attendant_service import AttendantService
 from client.whatsapp.V24 import WhatsAppClient
 def get_settings():
 	return settings
@@ -20,6 +23,19 @@ async def get_message_repository():
 	"""Retorna uma instância do repositório de mensagens."""
 	collection = await get_db_collection("messages")
 	return MessageRepository(collection)
+
+async def get_session_repository():
+    collection = await get_db_collection("sessions")
+    return SessionRepository(collection)
+
+async def get_attendant_repository():
+    collection = await get_db_collection("attendants")
+    return AttendantRepository(collection)
+
+async def get_attendant_service():
+    repo = await get_attendant_repository()
+    return AttendantService(repo)
+
 async def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {
@@ -31,3 +47,10 @@ async def get_clients():
 			internal_token=env.WHATSAPP_INTERNAL_TOKEN
 		)
 	}
+from services.chat_service import ChatService
+async def get_chat_service():
+    clients = await get_clients()
+    wa_client = clients["whatsapp"]
+    session_repo = await get_session_repository()
+    attendant_repo = await get_attendant_repository()
+    return ChatService(wa_client, session_repo, attendant_repo)

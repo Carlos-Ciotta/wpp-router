@@ -1,0 +1,66 @@
+=== EXEMPLOS DE REQUESTS PARA ATTENDANTS ===
+
+1. CRIAR ATENDENTE (POST /attendants/)
+URL: http://localhost:8000/attendants/
+Method: POST
+Headers: Content-Type: application/json
+Body:
+{
+  "name": "João Silva",
+  "login": "joao.silva",
+  "password": "senha123",
+  "sector": "Comercial",
+  "clients": [
+    "5511999999999",
+    "5511888888888"
+  ],
+  "working_hours": {
+    "0": [
+      { "start": "09:00", "end": "12:00" },
+      { "start": "13:00", "end": "18:00" }
+    ],
+    "1": [
+      { "start": "09:00", "end": "12:00" },
+      { "start": "13:00", "end": "18:00" }
+    ],
+    "2": [
+      { "start": "09:00", "end": "12:00" },
+      { "start": "13:00", "end": "18:00" }
+    ],
+    "3": [
+      { "start": "09:00", "end": "12:00" },
+      { "start": "13:00", "end": "18:00" }
+    ],
+    "4": [
+      { "start": "09:00", "end": "12:00" },
+      { "start": "13:00", "end": "17:00" }
+    ]
+  }
+}
+
+Nota: 
+- "0" = Segunda-feira, "6" = Domingo
+- "clients": Lista de números de telefone (formato WPPID)
+- "working_hours": Dicionário onde a chave é o dia da semana
+
+---------------------------------------------------
+
+2. LOGIN (POST /attendants/login)
+URL: http://localhost:8000/attendants/login
+Method: POST
+Headers: Content-Type: application/x-www-form-urlencoded
+Body (Form Data):
+username: joao.silva
+password: senha123
+
+Response Esperado:
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5c...",
+    "token_type": "bearer"
+}
+
+---------------------------------------------------
+
+3. LISTAR ATENDENTES (GET /attendants/)
+URL: http://localhost:8000/attendants/
+Method: GET
