@@ -485,9 +485,38 @@ class WhatsAppClient:
                     "description": interactive.get("list_reply", {}).get("description")
                 }
         
+        elif msg_type == "reaction":
+            parsed["content"] = {
+                "message_id": message.get("reaction", {}).get("message_id"),
+                "emoji": message.get("reaction", {}).get("emoji")
+            }
+        
+        elif msg_type == "order":
+             parsed["content"] = {
+                "catalog_id": message.get("order", {}).get("catalog_id"),
+                "product_items": message.get("order", {}).get("product_items", []),
+                "text": message.get("order", {}).get("text")
+             }
+        
+        elif msg_type == "system":
+            parsed["content"] = {
+                "body": message.get("system", {}).get("body"),
+                "identity": message.get("system", {}).get("identity"),
+                "new_wa_id": message.get("system", {}).get("new_wa_id"),
+                "type": message.get("system", {}).get("type"),
+                "customer": message.get("system", {}).get("customer")
+            }
+        
+        elif msg_type == "unknown":
+             parsed["content"] = message.get("errors", [])
+        
         else:
             parsed["content"] = message.get(msg_type, {})
         
+        # Additional metadata commonly found in messages
+        if "referral" in message:
+            parsed["referral"] = message["referral"]
+
         print(f"📩 Mensagem recebida - De: {from_number} ({from_name}), Tipo: {msg_type}")
         return parsed
     
@@ -513,6 +542,10 @@ class WhatsAppClient:
         # Informações de preço (para mensagens cobradas)
         if "pricing" in status:
             parsed["pricing"] = status["pricing"]
+        
+        # Informações da conversa (origin, expiration, etc)
+        if "conversation" in status:
+            parsed["conversation"] = status["conversation"]
         
         print(f"📊 Status recebido - Mensagem: {parsed['message_id']}, Status: {parsed['status']}")
         return parsed
