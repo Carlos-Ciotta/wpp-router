@@ -44,3 +44,20 @@ class SessionRepository:
                 }
             }
         )
+
+    async def get_last_assigned_attendant_id(self, category: str) -> Optional[str]:
+        try:
+            # Find the most recent session with an attendant assigned (not a QUEUE)
+            # Assuming real attendants have ObjectId-like strings, queues are "QUEUE_..."
+            cursor = self._collection.find(
+                {
+                    "category": category, 
+                    "attendant_id": {"$exists": True, "$ne": None, "$not": {"$regex": "^QUEUE_"}}
+                }
+            ).sort("last_interaction_at", -1).limit(1)
+            
+            async for doc in cursor:
+                return doc.get("attendant_id")
+        except:
+            pass
+        return None

@@ -149,28 +149,74 @@ class ChatService:
              await self.session_repo.assign_attendant(phone, "QUEUE_GEN", "Geral")
              self.wa_client.send_text(phone, config.queue_redirect_message.format(sector="Geral"))
 
+    def _normalize_phone(self, phone: str) -> str:
+        """Normaliza telefone para formato padrão (BR com 9 dígitos)"""
+        if phone and phone.startswith("55") and len(phone) == 12:
+            return f"{phone[:4]}9{phone[4:]}"
+        return phone
+
+    async def _get_next_attendant(self, sector: str) -> Optional[dict]:
+        # 1. Busca todos atendentes do setor
+        all_attendants = await self.attendant_repo.list({"sector": sector})
+        
+        # 2. Filtra por horário de trabalho
+        working_attendants = [
+            a for a in all_attendants 
+            if self._is_working_hour(a.get("working_hours"))
+        ]
+        
+        if not working_attendants:
+            return None
+            
+        # 3. Ordena para estabilidade (por _id)
+        working_attendants.sort(key=lambda x: str(x["_id"]))
+        
+        # 4. Recupera último atendente atribuído genericamente nesta categoria
+        last_id = await self.session_repo.get_last_assigned_attendant_id(sector.lower())
+        
+        if not last_id:
+            return working_attendants[0]
+            
+        # 5. Rotativo (Round Robin)
+        try:
+            # Procura índice do último (comparando strings)
+            last_index = next(
+                i for i, a in enumerate(working_attendants) 
+                if str(a["_id"]) == str(last_id)
+            )
+            # Pega o próximo
+            next_index = (last_index + 1) % len(working_attendants)
+            return working_attendants[next_index]
+        except StopIteration:
+            # Caso o último não esteja mais trabalhando/existindo, pega o primeiro
+            return working_attendants[0]
 
     async def _route_comercial(self, phone: str, config: ChatConfig):
-        # 1. Find attendant for this client
-        attendant = await self.attendant_repo.find_by_client_and_sector(phone, "Comercial")
+        # 1. Tenta encontrar atendente vinculado diretamente
+        search_phone = self._normalize_phone(phone)
+        attendant = await self.attendant_repo.find_by_client_and_sector(search_phone, "Comercial")
         
-        if not attendant:
-            self.wa_client.send_text(phone, config.not_found_message)
-            return
+        if attendant:
+            # Verifica apenas se está no horário
+            wh = attendant.get("working_hours")
+            if not self._is_working_hour(wh):
+                 self.wa_client.send_text(phone, config.absence_message)
+                 return
+        else:
+            # 2. Se não tem vínculo, faz rodízio entre disponíveis
+            attendant = await self._get_next_attendant("Comercial")
+            
+            if not attendant:
+                self.wa_client.send_text(phone, config.absence_message)
+                return
 
-        # 2. Check working hours
-        wh = attendant.get("working_hours")
-        if not self._is_working_hour(wh):
-             self.wa_client.send_text(phone, config.absence_message)
-             return
-
-        # 3. Assign
+        # 3. Atribuição
         attendant_name = attendant.get("name", "Consultor")
         attendant_id = str(attendant.get("_id"))
         
         await self.session_repo.assign_attendant(phone, attendant_id, "comercial")
         
-        # Determine welcome message: Attendant Custom > Global Config
+        # Mensagem de boas vindas
         welcome_msg = attendant.get("welcome_message")
         if not welcome_msg:
             welcome_msg = config.attendant_assigned_message.format(attendant_name=attendant_name)
