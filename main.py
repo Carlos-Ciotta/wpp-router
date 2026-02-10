@@ -9,7 +9,7 @@ from core.indexes import ensure_indexes
 from core.db import mongo_manager
 from core.environment import get_environment
 from core.dependencies import  get_clients
-from routes.webhook import router
+from routes.webhook import router as webhook_router
 
 env = get_environment()
 
@@ -21,7 +21,6 @@ async def lifespan(app: FastAPI):
     # Startup s
     await mongo_manager.connect()
     await get_clients()       # Ensure clients are initialized
-
     try:
         db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
         await ensure_indexes(db)
@@ -42,8 +41,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(
-    router)
+
+app.include_router(webhook_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)

@@ -357,7 +357,10 @@ class WhatsAppClient:
                             parsed_status = self._parse_status(status)
                             if parsed_status:
                                 messages.append(parsed_status)
-            self._repo.save_messages_bulk(messages)
+            
+            if self._repo and messages:
+                self._repo.save_messages_bulk(messages)
+            
             return messages
         
         except Exception as e:
