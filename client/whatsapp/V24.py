@@ -313,7 +313,7 @@ class WhatsAppClient:
             return PlainTextResponse(content=challenge, status_code=200)
         raise HTTPException(status_code=403, detail="Verification failed")
     
-    def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Processa notificações recebidas do webhook
         
@@ -324,7 +324,7 @@ class WhatsAppClient:
             Lista de mensagens processadas
         
         Example:
-            messages = client.process_webhook(request.json)
+            messages = await client.process_webhook(request.json)
             for msg in messages:
                 print(f"De: {msg['from']}, Tipo: {msg['type']}, Conteúdo: {msg['content']}")
         """
@@ -359,7 +359,7 @@ class WhatsAppClient:
                                 messages.append(parsed_status)
             
             if self._repo and messages:
-                self._repo.save_messages_bulk(messages)
+                await self._repo.save_messages_bulk(messages)
             
             return messages
         

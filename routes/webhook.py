@@ -72,7 +72,7 @@ async def receive_webhook(request: Request, client: WhatsAppClient = Depends(get
         data = await request.json()
         
         # O processamento e salvamento é feito pelo client/repo
-        messages = client.process_webhook(data)
+        messages = await client.process_webhook(data)
         
         # Log simplificado
         if messages:
