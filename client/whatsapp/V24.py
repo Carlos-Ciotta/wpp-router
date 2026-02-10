@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from core.environment import get_environment
 from fastapi import APIRouter, HTTPException, Body, Request, Depends
 from fastapi.responses import PlainTextResponse
+from repositories.message import MessageRepository
 
 env = get_environment()
 class WhatsAppClient:
@@ -16,8 +17,10 @@ class WhatsAppClient:
                  phone_id: str = None, 
                  wa_token: str = None, 
                  base_url: str = None,
-                 internal_token: str = None):
+                 internal_token: str = None,
+                 repository:MessageRepository = None):
         self.phone_id = phone_id
+        self._repo = repository
         self.wa_token = wa_token
         self._internal_token = internal_token
         self.base_url = base_url
@@ -354,7 +357,7 @@ class WhatsAppClient:
                             parsed_status = self._parse_status(status)
                             if parsed_status:
                                 messages.append(parsed_status)
-            
+            self._repo.save_messages_bulk(messages)
             return messages
         
         except Exception as e:
