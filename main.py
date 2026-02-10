@@ -18,7 +18,7 @@ env = get_environment()
 async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup and shutdown."""
     
-    # Startup
+    # Startup s
     await mongo_manager.connect()
     await get_clients()       # Ensure clients are initialized
 
