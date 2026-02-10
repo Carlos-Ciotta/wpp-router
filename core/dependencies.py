@@ -5,7 +5,6 @@ from core.db import mongo_manager
 from core.environment import get_environment
 from repositories.message import MessageRepository
 from client.whatsapp.V24 import WhatsAppClient
-from routes.webhook import WebhookRouter
 def get_settings():
 	return settings
 

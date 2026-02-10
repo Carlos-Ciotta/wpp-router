@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from core.indexes import ensure_indexes
 from core.db import mongo_manager
 from core.environment import get_environment
-from core.dependencies import  get_clients
+from core.dependencies import get_clients
 from routes.webhook import router as webhook_router
 
 env = get_environment()
