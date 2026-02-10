@@ -11,6 +11,7 @@ from core.environment import get_environment
 from core.dependencies import get_clients
 from routes.webhook import router as webhook_router
 from routes.attendants import router as attendants_router
+from routes.config import router as config_router
 
 env = get_environment()
 
@@ -45,6 +46,7 @@ app.add_middleware(
 
 app.include_router(webhook_router)
 app.include_router(attendants_router)
+app.include_router(config_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)

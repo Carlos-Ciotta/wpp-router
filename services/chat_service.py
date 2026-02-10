@@ -3,18 +3,22 @@ from typing import Optional
 from domain.session.chat_session import ChatSession, SessionStatus
 from repositories.session import SessionRepository
 from repositories.attendant import AttendantRepository
+from repositories.config import ConfigRepository
 from client.whatsapp.V24 import WhatsAppClient
+from domain.config.chat_config import ChatConfig
 
 class ChatService:
     def __init__(
         self, 
         wa_client: WhatsAppClient, 
         session_repo: SessionRepository,
-        attendant_repo: AttendantRepository
+        attendant_repo: AttendantRepository,
+        config_repo: ConfigRepository
     ):
         self.wa_client = wa_client
         self.session_repo = session_repo
         self.attendant_repo = attendant_repo
+        self.config_repo = config_repo
 
     def _is_working_hour(self, working_hours: dict) -> bool:
         if not working_hours:
@@ -52,8 +56,9 @@ class ChatService:
         return False
 
     async def _close_session(self, phone: str):
+        config: ChatConfig = await self.config_repo.get_config()
         await self.session_repo.close_session(phone)
-        self.wa_client.send_text(phone, "🕒 Chat encerrado por inatividade (30min).")
+        self.wa_client.send_text(phone, config.inactivity_closed_message)
 
     async def process_incoming_message(self, message: dict):
         phone = message.get("from")
@@ -63,7 +68,12 @@ class ChatService:
         # Ignore Status Updates
         if message.get("event_type") == "status":
             return
+            
+        # Ignore messages sent by us (status message might come as different type sometimes)
+        if message.get("from") == self.wa_client.phone_id:
+             return
 
+        config: ChatConfig = await self.config_repo.get_config()
         session = await self.session_repo.get_active_session(phone)
         
         # Check Timeout (30 min)
@@ -78,29 +88,33 @@ class ChatService:
             new_session = ChatSession(phone_number=phone)
             await self.session_repo.create_session(new_session)
             
-            buttons = [
-                {"id": "btn_comercial", "title": "Comercial"},
-                {"id": "btn_financeiro", "title": "Financeiro"},
-                {"id": "btn_outros", "title": "Outros"}
-            ]
+            # Convert buttons from config to list of dicts required by WA client
+            buttons_payload = []
+            for btn in config.greeting_buttons:
+                buttons_payload.append({"id": btn.id, "title": btn.title})
+            
+            # If no buttons configured, add a fallback? 
+            # Ideally config should always have buttons.
+            if not buttons_payload:
+                 buttons_payload = [{"id": "fallback", "title": "Atendimento"}]
+                 
             self.wa_client.send_buttons(
                 to=phone,
-                body_text="Olá! Escolha o setor desejado:",
-                buttons=buttons,
-                header_text="Bem-vindo"
+                body_text=config.greeting_message,
+                buttons=buttons_payload,
+                header_text=config.greeting_header
             )
             return
 
         # Handle Existing Session
         if session.status == SessionStatus.WAITING_MENU:
-            await self._handle_menu_selection(session, message)
+            await self._handle_menu_selection(session, message, config)
         
         elif session.status == SessionStatus.ACTIVE:
             await self.session_repo.update_last_interaction(phone)
-            # Here you could forward logic if needed, but for now we just track activity
             pass
 
-    async def _handle_menu_selection(self, session: ChatSession, message: dict):
+    async def _handle_menu_selection(self, session: ChatSession, message: dict, config: ChatConfig):
         msg_type = message.get("type")
         content = message.get("content", {})
         
@@ -114,30 +128,40 @@ class ChatService:
                 selected_option = content["payload"]
         
         phone = session.phone_number
+        
+        # Find the button config that matches selection
+        selected_btn = next((btn for btn in config.greeting_buttons if btn.id == selected_option), None)
 
-        if selected_option == "btn_comercial":
-            await self._route_comercial(phone)
-        elif selected_option == "btn_financeiro":
-            await self.session_repo.assign_attendant(phone, "QUEUE_FIN", "financeiro")
-            self.wa_client.send_text(phone, "📝 Encaminhado para o Financeiro. Aguarde um momento.")
-        elif selected_option == "btn_outros":
-             await self.session_repo.assign_attendant(phone, "QUEUE_GEN", "outros")
-             self.wa_client.send_text(phone, "📝 Encaminhado para Outros. Aguarde um momento.")
-        else:
+        if not selected_btn:
             self.wa_client.send_text(phone, "❌ Opção inválida. Por favor, selecione um dos botões acima.")
+            return
 
-    async def _route_comercial(self, phone: str):
+        # Route logic
+        if selected_btn.sector == "Comercial":
+            await self._route_comercial(phone, config)
+        elif selected_btn.queue_id:
+            # Generic routing
+             sector_name = selected_btn.sector or "Atendimento"
+             await self.session_repo.assign_attendant(phone, selected_btn.queue_id, sector_name)
+             self.wa_client.send_text(phone, config.queue_redirect_message.format(sector=sector_name))
+        else:
+             # Fallback
+             await self.session_repo.assign_attendant(phone, "QUEUE_GEN", "Geral")
+             self.wa_client.send_text(phone, config.queue_redirect_message.format(sector="Geral"))
+
+
+    async def _route_comercial(self, phone: str, config: ChatConfig):
         # 1. Find attendant for this client
         attendant = await self.attendant_repo.find_by_client_and_sector(phone, "Comercial")
         
         if not attendant:
-            self.wa_client.send_text(phone, "🚫 Nenhum atendente comercial vinculado ao seu número.")
+            self.wa_client.send_text(phone, config.not_found_message)
             return
 
         # 2. Check working hours
         wh = attendant.get("working_hours")
         if not self._is_working_hour(wh):
-             self.wa_client.send_text(phone, "💤 O atendente responsável não está em horário de serviço no momento.")
+             self.wa_client.send_text(phone, config.absence_message)
              return
 
         # 3. Assign
@@ -145,4 +169,10 @@ class ChatService:
         attendant_id = str(attendant.get("_id"))
         
         await self.session_repo.assign_attendant(phone, attendant_id, "comercial")
-        self.wa_client.send_text(phone, f"✅ Você está sendo atendido por *{attendant_name}*.")
+        
+        # Determine welcome message: Attendant Custom > Global Config
+        welcome_msg = attendant.get("welcome_message")
+        if not welcome_msg:
+            welcome_msg = config.attendant_assigned_message.format(attendant_name=attendant_name)
+            
+        self.wa_client.send_text(phone, welcome_msg)

@@ -6,6 +6,7 @@ from core.environment import get_environment
 from repositories.message import MessageRepository
 from repositories.session import SessionRepository
 from repositories.attendant import AttendantRepository
+from repositories.config import ConfigRepository
 from services.attendant_service import AttendantService
 from client.whatsapp.V24 import WhatsAppClient
 def get_settings():
@@ -36,6 +37,10 @@ async def get_attendant_service():
     repo = await get_attendant_repository()
     return AttendantService(repo)
 
+async def get_config_repository():
+    collection = await get_db_collection("configs")
+    return ConfigRepository(collection)
+
 async def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {
@@ -53,4 +58,5 @@ async def get_chat_service():
     wa_client = clients["whatsapp"]
     session_repo = await get_session_repository()
     attendant_repo = await get_attendant_repository()
-    return ChatService(wa_client, session_repo, attendant_repo)
+    config_repo = await get_config_repository()
+    return ChatService(wa_client, session_repo, attendant_repo, config_repo)

@@ -64,3 +64,45 @@ Response Esperado:
 3. LISTAR ATENDENTES (GET /attendants/)
 URL: http://localhost:8000/attendants/
 Method: GET
+
+---------------------------------------------------
+
+4. OBTER CONFIGURAÇÃO ATUAL (GET /config/)
+URL: http://localhost:8000/config/
+Method: GET
+
+---------------------------------------------------
+
+5. ATUALIZAR CONFIGURAÇÃO (POST /config/)
+URL: http://localhost:8000/config/
+Method: POST
+Headers: Content-Type: application/json
+Body:
+{
+    "greeting_message": "Olá! Seja bem-vindo à nossa empresa. Como podemos ajudar hoje?",
+    "greeting_header": "Atendimento Virtual",
+    "greeting_buttons": [
+        {
+            "id": "btn_comercial",
+            "title": "Falar com Vendas",
+            "sector": "Comercial"
+        },
+        {
+            "id": "btn_financeiro",
+            "title": "Financeiro / Boletos",
+            "queue_id": "QUEUE_FIN",
+            "sector": "Financeiro"
+        },
+        {
+            "id": "btn_suporte",
+            "title": "Suporte Técnico",
+            "queue_id": "QUEUE_SUP",
+            "sector": "Suporte"
+        }
+    ],
+    "attendant_assigned_message": "✅ Um de nossos especialistas, *{attendant_name}*, irá te atender agora.",
+    "absence_message": "⚠️ Nosso time comercial já encerrou o expediente. Retornaremos amanhã às 08h.",
+    "not_found_message": "🚫 Não encontramos seu cadastro vinculado a um vendedor específico.",
+    "queue_redirect_message": "🔄 Transferindo para o setor de {sector}...",
+    "inactivity_closed_message": "👋 Encerramos este atendimento por falta de interação. Se precisar, chame novamente!"
+}
