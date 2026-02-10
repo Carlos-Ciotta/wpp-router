@@ -139,10 +139,12 @@ class ChatService:
             return
 
         # Route logic
-        if selected_btn.sector == "Comercial":
-            await self._route_comercial(phone, config)
+        # Setores que devem ter atendimento humano direto (Rotativo ou Vinculado)
+        if selected_btn.sector in ["Comercial", "Financeiro"]:
+            await self._route_sector(phone, config, selected_btn.sector)
+            
         elif selected_btn.queue_id:
-            # Generic routing
+            # Rotea para fila genérica (ex: Suporte) se não for um dos setores acima
              sector_name = selected_btn.sector or "Atendimento"
              await self.session_repo.assign_attendant(phone, selected_btn.queue_id, sector_name)
              self.wa_client.send_text(phone, config.queue_redirect_message.format(sector=sector_name))
@@ -193,10 +195,10 @@ class ChatService:
             # Caso o último não esteja mais trabalhando/existindo, pega o primeiro
             return working_attendants[0]
 
-    async def _route_comercial(self, phone: str, config: ChatConfig):
+    async def _route_sector(self, phone: str, config: ChatConfig, sector_name: str):
         # 1. Tenta encontrar atendente vinculado diretamente
         search_phone = self._normalize_phone(phone)
-        attendant = await self.attendant_repo.find_by_client_and_sector(search_phone, "Comercial")
+        attendant = await self.attendant_repo.find_by_client_and_sector(search_phone, sector_name)
         
         if attendant:
             # Verifica apenas se está no horário
@@ -206,7 +208,7 @@ class ChatService:
                  return
         else:
             # 2. Se não tem vínculo, faz rodízio entre disponíveis
-            attendant = await self._get_next_attendant("Comercial")
+            attendant = await self._get_next_attendant(sector_name)
             
             if not attendant:
                 self.wa_client.send_text(phone, config.absence_message)
@@ -216,7 +218,7 @@ class ChatService:
         attendant_name = attendant.get("name", "Consultor")
         attendant_id = str(attendant.get("_id"))
         
-        await self.session_repo.assign_attendant(phone, attendant_id, "comercial")
+        await self.session_repo.assign_attendant(phone, attendant_id, sector_name.lower())
         
         # Mensagem de boas vindas
         welcome_msg = attendant.get("welcome_message")
