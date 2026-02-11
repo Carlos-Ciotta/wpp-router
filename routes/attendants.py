@@ -26,6 +26,35 @@ async def transfer_chat(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/finish")
+async def finish_session(
+    client_phone: str = Body(..., embed=True),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Finaliza a sessão (marca como não ativa).
+    """
+    try:
+        return await chat_service.finish_session(client_phone)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/reopen")
+async def reopen_session(
+    client_phone: str = Body(..., embed=True),
+    attendant_id: str = Body(..., embed=True),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Reabre chat (ou cria novo) e atribui ao atendente.
+    """
+    try:
+        return await chat_service.reopen_session(client_phone, attendant_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_attendant(
     attendant: Attendant, 

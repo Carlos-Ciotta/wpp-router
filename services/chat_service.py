@@ -50,6 +50,43 @@ class ChatService:
             
         return {"message": f"Transferido com sucesso para {attendant_name}"}
 
+    async def finish_session(self, phone: str):
+        """Finaliza a sessão ativa do cliente."""
+        await self.session_repo.close_session(phone)
+        return {"message": "Sessão finalizada com sucesso."}
+
+    async def reopen_session(self, phone: str, attendant_id: str):
+        """
+        Reabre um chat (ou cria novo) já atribuído a um atendente.
+        """
+        # 1. Valida atendente
+        attendant = await self.attendant_repo.get_by_id(attendant_id)
+        if not attendant:
+            raise ValueError("Atendente não encontrado.")
+        
+        sector = attendant.get("sector", ["Geral"])[0] if attendant.get("sector") else "Geral"
+
+        # 2. Verifica se JÁ existe ativa
+        active_session = await self.session_repo.get_active_session(phone)
+        
+        if active_session:
+            # Reatribui a existente
+            await self.session_repo.assign_attendant(phone, attendant_id, sector)
+        else:
+            # Cria nova já ativa
+            new_session = ChatSession(
+                phone_number=phone,
+                created_at=datetime.now(TZ_BR),
+                last_interaction_at=datetime.now(TZ_BR),
+                status=SessionStatus.ACTIVE,
+                attendant_id=attendant_id,
+                category=sector
+            )
+            await self.session_repo.create_session(new_session)
+            await self.set_active_sessions(phone=phone)
+
+        return {"message": "Chat reaberto e atribuído com sucesso."}
+
     async def get_cached_config(self) -> ChatConfig:
         """Evita idas excessivas ao banco de dados."""
         cached = await self._cache.get(key="chat_config")
