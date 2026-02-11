@@ -4,10 +4,25 @@ from domain.attendants.attendant import Attendant
 from services.attendant_service import AttendantService
 from services.chat_service import ChatService
 from core.dependencies import get_attendant_service, get_chat_service
-from typing import List
+from typing import List, Optional, Dict
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/attendants", tags=["Attendants"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="attendants/login")
+
+# --- Schemas ---
+class WorkIntervalSchema(BaseModel):
+    start: str
+    end: str
+
+class AttendantCreate(BaseModel):
+    name: str
+    login: str
+    password: str
+    sector: List[str]
+    clients: List[str] = []
+    welcome_message: Optional[str] = None
+    working_hours: Optional[Dict[str, List[WorkIntervalSchema]]] = None
 
 @router.post("/transfer")
 async def transfer_chat(
@@ -57,7 +72,7 @@ async def reopen_session(
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_attendant(
-    attendant: Attendant, 
+    attendant: AttendantCreate, 
     service: AttendantService = Depends(get_attendant_service)
 ):
     """

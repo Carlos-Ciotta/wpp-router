@@ -13,7 +13,7 @@ class AttendantService():
                 data["password"] = get_password_hash(data["password"])
                 
             attendant = Attendant(**data)
-            return await self._repository.save(attendant.model_dump(exclude={"_id"}))
+            return await self._repository.save(attendant.to_dict())
         except Exception as e:
             raise Exception(f"Error creating attendant: {str(e)}")
             
