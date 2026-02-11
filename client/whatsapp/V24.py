@@ -15,11 +15,13 @@ class WhatsAppClient:
     
     def __init__(self, 
                  phone_id: str, 
+                 business_account_id: str,
                  wa_token: str , 
                  base_url: str ,
                  internal_token: str ,
                  repository:MessageRepository):
         self.phone_id = phone_id
+        self.business_account_id = business_account_id
         self._repo = repository
         self.wa_token = wa_token
         self._internal_token = internal_token
@@ -58,6 +60,72 @@ class WhatsAppClient:
             return f"{phone[:4]}9{phone[4:]}"
         return phone
 
+    def get_templates(self, status: str = "APPROVED") -> List[Dict[str, Any]]:
+        """
+        Busca templates aprovados pela Meta
+        
+        Args:
+            status: Status dos templates a buscar (default: APPROVED)
+        """
+        try:
+            url = f"{self.base_url}/{self.business_account_id}/message_templates"
+            params = {
+                "status": status,
+                "limit": 100 # Paginação pode ser necessária se houver muitos
+            }
+            
+            response = requests.get(
+                url, 
+                headers=self.headers, 
+                params=params,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            return data.get("data", [])
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Erro ao buscar templates: {e.response.text if e.response else e}")
+            raise
+
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        language_code: str = "pt_BR",
+        components: List[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Envia mensagem de template
+        
+        Args:
+            to: Número do destinatário
+            template_name: Nome do template
+            language_code: Código do idioma (default: pt_BR)
+            components: Componentes variáveis do template (header, body, etc)
+        """
+        to = self._sanitize_phone(to)
+        
+        template_payload = {
+            "name": template_name,
+            "language": {
+                "code": language_code
+            }
+        }
+        
+        if components:
+            template_payload["components"] = components
+            
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": template_payload
+        }
+        
+        print(f"📤 Enviando template '{template_name}' para {to}")
+        return self._send_request(payload)
 
     def send_text(self, to: str, text: str, preview_url: bool = False) -> Dict[str, Any]:
         # A normalização agora pode ser feita via Message ou mantida aqui por segurança

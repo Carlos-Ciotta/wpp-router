@@ -16,14 +16,30 @@ class SessionRepository:
             return ChatSession(**data)
         return None
 
+    async def get_last_session(self, phone: str) -> Optional[ChatSession]:
+        """Recupera a última sessão do cliente, independente do status."""
+        cursor = self._collection.find({"phone_number": phone}).sort("last_interaction_at", -1).limit(1)
+        # Note: sort by last_interaction_at desc
+        try:
+            # Motor 3.0+ syntax for finding one usually implies await find_one or iterating cursor
+            # If using find().limit(1), we need to iterate or to_list
+            results = await cursor.to_list(length=1)
+            if results:
+                return ChatSession(**results[0])
+        except Exception:
+            return None
+        return None
+
     async def create_session(self, session: ChatSession):
         await self._collection.insert_one(session.dict(exclude={"_id"}))
         return session
 
-    async def update_last_interaction(self, phone: str):
+    async def update_last_interaction(self, phone: str, interaction_time: datetime = None):
+        if interaction_time is None:
+            interaction_time = datetime.now()
         await self._collection.update_one(
             {"phone_number": phone, "status": {"$ne": SessionStatus.CLOSED.value}},
-            {"$set": {"last_interaction_at": datetime.now()}}
+            {"$set": {"last_interaction_at": interaction_time}}
         )
 
     async def close_session(self, phone: str):

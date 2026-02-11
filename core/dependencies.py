@@ -9,6 +9,8 @@ from repositories.attendant import AttendantRepository
 from repositories.config import ConfigRepository
 from services.attendant_service import AttendantService
 from client.whatsapp.V24 import WhatsAppClient
+from utils.cache import Cache
+
 def get_settings():
 	return settings
 
@@ -19,6 +21,10 @@ async def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
 	"""Retorna uma coleção do MongoDB."""
 	db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
 	return db[collection_name]
+
+async def get_cache():
+	"""Retorna uma instância do cache."""
+	return Cache(env.REDIS_URL)
 
 async def get_message_repository():
 	"""Retorna uma instância do repositório de mensagens."""
@@ -46,9 +52,10 @@ async def get_clients():
 	return {
 		"whatsapp": WhatsAppClient(
 			phone_id=env.WHATSAPP_PHONE_ID,
+			business_account_id=env.WHATSAPP_BUSINESS_ACCOUNT_ID,
 			wa_token=env.WHATSAPP_TOKEN,
 			repository=await get_message_repository(),
-			base_url=f"https://graph.facebook.com/v24.0/{env.WHATSAPP_PHONE_ID}/messages",
+			base_url="https://graph.facebook.com/v24.0",
 			internal_token=env.WHATSAPP_INTERNAL_TOKEN
 		)
 	}
@@ -59,4 +66,4 @@ async def get_chat_service():
     session_repo = await get_session_repository()
     attendant_repo = await get_attendant_repository()
     config_repo = await get_config_repository()
-    return ChatService(wa_client, session_repo, attendant_repo, config_repo)
+    return ChatService(wa_client, session_repo, attendant_repo, config_repo, cache=await get_cache())

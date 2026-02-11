@@ -1,12 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from domain.attendants.attendant import Attendant
 from services.attendant_service import AttendantService
-from core.dependencies import get_attendant_service
+from services.chat_service import ChatService
+from core.dependencies import get_attendant_service, get_chat_service
 from typing import List
 
 router = APIRouter(prefix="/attendants", tags=["Attendants"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="attendants/login")
+
+@router.post("/transfer")
+async def transfer_chat(
+    client_phone: str = Body(..., embed=True),
+    target_attendant_id: str = Body(..., embed=True),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Transfere um cliente para outro atendente.
+    """
+    try:
+        result = await chat_service.transfer_attendant(client_phone, target_attendant_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_attendant(

@@ -8,9 +8,11 @@ class EnvironmentSettings(BaseSettings):
 
     # Credenciais (definir no .env)
     WHATSAPP_PHONE_ID: str
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str
     WHATSAPP_TOKEN: str
     WHATSAPP_INTERNAL_TOKEN:str
 
+    REDIS_URL: str
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

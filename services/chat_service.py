@@ -23,6 +23,33 @@ class ChatService:
         self.attendant_repo :AttendantRepository= attendant_repo
         self._cache : Cache = cache
 
+    async def transfer_attendant(self, phone: str, new_attendant_id: str):
+        """Transfere o atendimento para outro atendente."""
+        # 1. Verifica se o novo atendente existe
+        new_attendant = await self.attendant_repo.get_by_id(new_attendant_id)
+        if not new_attendant:
+            raise ValueError("Novo atendente não encontrado.")
+
+        # 2. Verifica se tem sessão ativa
+        session = await self.session_repo.get_active_session(phone)
+        if not session:
+            raise ValueError("Cliente não possui sessão ativa para transferir.")
+            
+        # 3. Atualiza a sessão (Usando o mesmo método de assign, ou criando um novo se necessário)
+        # O assign_attendant atualiza status pra ACTIVE e muda o ID. Serve para o nosso caso.
+        # Precisamos saber o setor do novo atendente? 
+        # O método assign_attendant pede 'category' (setor). Vamos pegar do atendente novo.
+        # attendant.db.py schema shows 'sector' is a List[str]. 
+        # For simplicity, taking the first sector or 'Geral'.
+        sector = new_attendant.get("sector", ["Outros"])[0] if new_attendant.get("sector") else "Outros"
+        
+        await self.session_repo.assign_attendant(phone, new_attendant_id, sector)
+        
+        # 4. Notifica o cliente
+        attendant_name = new_attendant.get("name", "Atendente")
+            
+        return {"message": f"Transferido com sucesso para {attendant_name}"}
+
     async def get_cached_config(self) -> ChatConfig:
         """Evita idas excessivas ao banco de dados."""
         cached = await self._cache.get(key="chat_config")
@@ -30,6 +57,48 @@ class ChatService:
             return ChatConfig(**cached[0])  # Cache armazena lista de dicts
         config = await self._config_repo.get_config()
         return ChatConfig(**config.dict()) if config else ChatConfig()
+
+    async def get_approved_templates(self) -> list:
+        """Retorna templates aprovados (pode adicionar cache aqui)."""
+        cached = await self._cache.get("whatsapp_templates")
+        if cached:
+            return cached
+            
+        try:
+            templates = self.wa_client.get_templates(status="APPROVED")
+            # Cache por 1 hora
+            await self._cache.set("whatsapp_templates", templates, expire=3600)
+            return templates
+        except Exception as e:
+            logging.error(f"Erro ao buscar templates: {e}")
+            return []
+
+    async def can_send_free_message(self, phone: str) -> bool:
+        """
+        Verifica regra de 24h:
+        - Se cliente não tem sessão anterior: Janela fechada (False)
+        - Se interagir pela última vez > 24h: Janela fechada (False)
+        - Se dentro de 24h: Janela aberta (True)
+        """
+        # 1. Busca sessão ativa ou última sessão
+        session = await self.session_repo.get_active_session(phone)
+        if not session:
+            session = await self.session_repo.get_last_session(phone)
+            
+        if not session:
+            return False # Nunca houve contato
+
+        last = session.last_interaction_at
+        
+        # Tratamento de Timezone para comparação segura
+        now = datetime.now(TZ_BR)
+        
+        if last.tzinfo is None:
+            # Assume UTC se naive (comportamento padrão Mongo)
+            last = last.replace(tzinfo=ZoneInfo("UTC"))
+        
+        diff = now - last
+        return diff < timedelta(hours=24)
 
     async def get_active_sessions(self) -> list[ChatSession]:
         return await self._cache.get(key="active_sessions") or []
@@ -86,7 +155,7 @@ class ChatService:
             case SessionStatus.WAITING_MENU:
                 await self._handle_menu_selection(session, message, config)
             case SessionStatus.ACTIVE:
-                await self.session_repo.update_last_interaction(phone)
+                await self.session_repo.update_last_interaction(phone, datetime.now(TZ_BR))
 
     async def _start_new_session(self, phone: str, config: ChatConfig):
         new_session = ChatSession(
@@ -125,13 +194,8 @@ class ChatService:
             return self.wa_client.send_text(session.phone_number, "Por favor, selecione uma opção válida.")
 
         # Roteamento baseado em setor
-        if selected_btn.sector in ["Comercial", "Financeiro"]:
+        if selected_btn.sector in ["Comercial", "Financeiro", "Outros"]:
             await self._route_sector(session.phone_number, config, selected_btn.sector)
-        else:
-            sector_name = selected_btn.sector or "Atendimento"
-            queue_id = selected_btn.queue_id or "QUEUE_GEN"
-            await self.session_repo.assign_attendant(session.phone_number, queue_id, sector_name)
-            self.wa_client.send_text(session.phone_number, config.queue_redirect_message.format(sector=sector_name))
 
     def _normalize_phone(self, phone: str) -> str:
         """Normaliza telefone para formato padrão (BR com 9 dígitos)"""

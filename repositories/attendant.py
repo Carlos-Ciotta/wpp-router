@@ -28,7 +28,7 @@ class AttendantRepository():
         # Case insensitive sector search might be good, but strict for now
         return await self._collection.find_one({
             "clients": client_phone,
-            "sector": sector
+            "sector": {"$in": sector}
         })
 
     async def find_by_login(self, login: str):

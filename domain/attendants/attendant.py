@@ -8,7 +8,7 @@ class Attendant():
     name: str
     login: str
     password: str
-    sector: str
+    sector: List[str]
     clients: List[str]
     welcome_message: Optional[str] = None
     # Key: Day of week (0=Monday, 6=Sunday), Value: List of intervals
