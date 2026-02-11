@@ -195,7 +195,7 @@ class ChatService:
                 return
 
         # 3. Atribuição
-        attendant_name = attendant.get("name", "Consultor")
+        attendant_name = attendant.get("name", "Atendente")
         attendant_id = str(attendant.get("_id"))
         
         await self.session_repo.assign_attendant(phone, attendant_id, sector_name.lower())
