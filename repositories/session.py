@@ -52,7 +52,7 @@ class SessionRepository:
             cursor = self._collection.find(
                 {
                     "category": category, 
-                    "attendant_id": {"$exists": True, "$ne": None, "$not": {"$regex": "^QUEUE_"}}
+                    "attendant_id": {"$exists": True, "$ne": None}
                 }
             ).sort("last_interaction_at", -1).limit(1)
             

@@ -81,7 +81,7 @@ async def receive_webhook(
         
         # Processamento da lógica de chat (Automação, Menus, Atribuição)
         for msg in messages:
-             await chat_service.process_incoming_message(msg)
+            await chat_service.process_incoming_message(msg)
         
         # Log simplificado
         if messages:

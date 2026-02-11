@@ -8,7 +8,7 @@ from core.environment import get_environment
 from fastapi import APIRouter, HTTPException, Body, Request, Depends
 from fastapi.responses import PlainTextResponse
 from repositories.message import MessageRepository
-
+from domain.message.message import Message
 env = get_environment()
 class WhatsAppClient:
     """Cliente para enviar e receber mensagens via WhatsApp Cloud API v24.0"""
@@ -29,21 +29,26 @@ class WhatsAppClient:
             "Content-Type": "application/json"
         }
     
+
     def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Envia request para a API"""
         try:
             response = requests.post(
-                self.base_url,
+                f"{self.base_url}/{self.phone_id}/messages", # URL base costuma precisar do phone_id
                 headers=self.headers,
                 json=payload,
                 timeout=30
             )
             response.raise_for_status()
+            
+            payload.pop("messaging_product", None)
+            payload.pop("recipient_type", None)
+            payload['direction'] = 'outbound'
+
+            self._repo.save_messages_bulk(payload)
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"❌ Erro ao enviar mensagem: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                print(f"Response: {e.response.text}")
+            print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
             raise
     
     def _sanitize_phone(self, phone: str) -> str:
@@ -53,32 +58,16 @@ class WhatsAppClient:
             return f"{phone[:4]}9{phone[4:]}"
         return phone
 
+
     def send_text(self, to: str, text: str, preview_url: bool = False) -> Dict[str, Any]:
-        """
-        Envia mensagem de texto
-        
-        Args:
-            to: Número do destinatário (formato: 5511999999999)
-            text: Texto da mensagem
-            preview_url: Se True, mostra preview de links
-        
-        Returns:
-            Resposta da API com message_id
-        """
-        to = self._sanitize_phone(to)
-        
+        # A normalização agora pode ser feita via Message ou mantida aqui por segurança
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
             "to": to,
             "type": "text",
-            "text": {
-                "preview_url": preview_url,
-                "body": text
-            }
+            "text": {"preview_url": preview_url, "body": text}
         }
-        
-        print(f"📤 Enviando texto para {to}: {text[:50]}...")
         return self._send_request(payload)
     
     def send_image(
@@ -328,276 +317,65 @@ class WhatsAppClient:
             return PlainTextResponse(content=challenge, status_code=200)
         raise HTTPException(status_code=403, detail="Verification failed")
     
-    async def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    # --- PROCESSAMENTO DE WEBHOOK (USANDO DOMAIN) ---
+
+    async def verify_webhook(self, request: Request):
+        """Handshake de verificação do Facebook"""
+        params = request.query_params
+        if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == self._internal_token:
+            return PlainTextResponse(content=params.get("hub.challenge"), status_code=200)
+        raise HTTPException(status_code=403, detail="Verification failed")
+
+    async def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Message]:
         """
-        Processa notificações recebidas do webhook
-        
-        Args:
-            webhook_data: Dados JSON recebidos no POST do webhook
-        
-        Returns:
-            Lista de mensagens processadas
-        
-        Example:
-            messages = await client.process_webhook(request.json)
-            for msg in messages:
-                print(f"De: {msg['from']}, Tipo: {msg['type']}, Conteúdo: {msg['content']}")
+        Usa o Domain Model para processar o JSON complexo.
         """
-        messages = []
-        
         try:
-            if "entry" not in webhook_data:
-                return messages
+            # DELEGAÇÃO: O modelo de domínio faz o parse de tudo (Mensagens e Status)
+            events = Message.parse_webhook(webhook_data)
             
-            for entry in webhook_data["entry"]:
-                if "changes" not in entry:
-                    continue
-                
-                for change in entry["changes"]:
-                    if change.get("field") != "messages":
-                        continue
-                    
-                    value = change.get("value", {})
-                    
-                    # Processa mensagens recebidas
-                    if "messages" in value:
-                        for message in value["messages"]:
-                            parsed_msg = self._parse_message(message, value.get("contacts", []))
-                            if parsed_msg:
-                                messages.append(parsed_msg)
-                    
-                    # Processa status de mensagens enviadas
-                    if "statuses" in value:
-                        for status in value["statuses"]:
-                            parsed_status = self._parse_status(status)
-                            if parsed_status:
-                                messages.append(parsed_status)
+            if not events:
+                return []
+
+            # 1. Filtra as mensagens novas (exclui o tipo status_update)
+            to_save = [e.to_dict() for e in events if e.type != "status_update"]
+
+            # 2. Filtra os updates de status
+            to_update = [e for e in events if e.type == "status_update"]
+
+            # 3. Executa as operações em lote (Bulk)
+            if to_save:
+                await self._repo.save_messages_bulk(to_save)
+
+            if to_update:
+                # Aqui delegamos a lista inteira para o repositório tratar via Bulk Write do MongoDB
+                await self._repo.update_message_status_bulk(to_update)
             
-            if self._repo and messages:
-                await self._repo.save_messages_bulk(messages)
-            
-            return messages
+            return events
         
         except Exception as e:
-            print(f"❌ Erro ao processar webhook: {e}")
-            return messages
-    
-    def _parse_message(self, message: Dict[str, Any], contacts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """
-        Parser interno para mensagens recebidas
-        
-        Returns:
-            Dict com: type, message_id, from, timestamp, from_name, content, context (se reply)
-        """
-        msg_type = message.get("type")
-        message_id = message.get("id")
-        from_number = message.get("from")
-        timestamp = message.get("timestamp")
-        
-        # Pega nome do contato
-        from_name = None
-        for contact in contacts:
-            if contact.get("wa_id") == from_number:
-                from_name = contact.get("profile", {}).get("name")
-                break
-        
-        # Contexto (resposta a outra mensagem)
-        context = None
-        if "context" in message:
-            context = {
-                "message_id": message["context"].get("id"),
-                "from": message["context"].get("from")
-            }
-        
-        parsed = {
-            "event_type": "message",
-            "type": msg_type,
-            "message_id": message_id,
-            "from": from_number,
-            "from_name": from_name,
-            "timestamp": timestamp,
-            "context": context
-        }
-        
-        # Processa conteúdo por tipo
-        if msg_type == "text":
-            parsed["content"] = message.get("text", {}).get("body", "")
-        
-        elif msg_type == "image":
-            parsed["content"] = {
-                "id": message.get("image", {}).get("id"),
-                "mime_type": message.get("image", {}).get("mime_type"),
-                "sha256": message.get("image", {}).get("sha256"),
-                "caption": message.get("image", {}).get("caption")
-            }
-        
-        elif msg_type == "video":
-            parsed["content"] = {
-                "id": message.get("video", {}).get("id"),
-                "mime_type": message.get("video", {}).get("mime_type"),
-                "sha256": message.get("video", {}).get("sha256"),
-                "caption": message.get("video", {}).get("caption")
-            }
-        
-        elif msg_type == "audio":
-            parsed["content"] = {
-                "id": message.get("audio", {}).get("id"),
-                "mime_type": message.get("audio", {}).get("mime_type"),
-                "sha256": message.get("audio", {}).get("sha256"),
-                "voice": message.get("audio", {}).get("voice", False)
-            }
-        
-        elif msg_type == "document":
-            parsed["content"] = {
-                "id": message.get("document", {}).get("id"),
-                "mime_type": message.get("document", {}).get("mime_type"),
-                "sha256": message.get("document", {}).get("sha256"),
-                "filename": message.get("document", {}).get("filename"),
-                "caption": message.get("document", {}).get("caption")
-            }
-        
-        elif msg_type == "sticker":
-            parsed["content"] = {
-                "id": message.get("sticker", {}).get("id"),
-                "mime_type": message.get("sticker", {}).get("mime_type"),
-                "sha256": message.get("sticker", {}).get("sha256"),
-                "animated": message.get("sticker", {}).get("animated", False)
-            }
-        
-        elif msg_type == "location":
-            loc = message.get("location", {})
-            parsed["content"] = {
-                "latitude": loc.get("latitude"),
-                "longitude": loc.get("longitude"),
-                "name": loc.get("name"),
-                "address": loc.get("address")
-            }
-        
-        elif msg_type == "contacts":
-            parsed["content"] = message.get("contacts", [])
-        
-        elif msg_type == "button":
-            # Resposta a botão
-            parsed["content"] = {
-                "payload": message.get("button", {}).get("payload"),
-                "text": message.get("button", {}).get("text")
-            }
-        
-        elif msg_type == "interactive":
-            # Resposta a lista ou botão interativo
-            interactive = message.get("interactive", {})
-            interactive_type = interactive.get("type")
-            
-            if interactive_type == "button_reply":
-                parsed["content"] = {
-                    "id": interactive.get("button_reply", {}).get("id"),
-                    "title": interactive.get("button_reply", {}).get("title")
-                }
-            elif interactive_type == "list_reply":
-                parsed["content"] = {
-                    "id": interactive.get("list_reply", {}).get("id"),
-                    "title": interactive.get("list_reply", {}).get("title"),
-                    "description": interactive.get("list_reply", {}).get("description")
-                }
-        
-        elif msg_type == "reaction":
-            parsed["content"] = {
-                "message_id": message.get("reaction", {}).get("message_id"),
-                "emoji": message.get("reaction", {}).get("emoji")
-            }
-        
-        elif msg_type == "order":
-             parsed["content"] = {
-                "catalog_id": message.get("order", {}).get("catalog_id"),
-                "product_items": message.get("order", {}).get("product_items", []),
-                "text": message.get("order", {}).get("text")
-             }
-        
-        elif msg_type == "system":
-            parsed["content"] = {
-                "body": message.get("system", {}).get("body"),
-                "identity": message.get("system", {}).get("identity"),
-                "new_wa_id": message.get("system", {}).get("new_wa_id"),
-                "type": message.get("system", {}).get("type"),
-                "customer": message.get("system", {}).get("customer")
-            }
-        
-        elif msg_type == "unknown":
-             parsed["content"] = message.get("errors", [])
-        
-        else:
-            parsed["content"] = message.get(msg_type, {})
-        
-        # Additional metadata commonly found in messages
-        if "referral" in message:
-            parsed["referral"] = message["referral"]
+            print(f"❌ Erro ao processar webhook no Client: {e}")
+            return []
 
-        print(f"📩 Mensagem recebida - De: {from_number} ({from_name}), Tipo: {msg_type}")
-        return parsed
-    
-    def _parse_status(self, status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Parser interno para status de mensagens enviadas
-        
-        Returns:
-            Dict com: event_type='status', message_id, recipient, status, timestamp
-        """
-        parsed = {
-            "event_type": "status",
-            "message_id": status.get("id"),
-            "recipient": status.get("recipient_id"),
-            "status": status.get("status"),  # sent, delivered, read, failed
-            "timestamp": status.get("timestamp")
-        }
-        
-        # Se houver erro
-        if "errors" in status:
-            parsed["errors"] = status["errors"]
-        
-        # Informações de preço (para mensagens cobradas)
-        if "pricing" in status:
-            parsed["pricing"] = status["pricing"]
-        
-        # Informações da conversa (origin, expiration, etc)
-        if "conversation" in status:
-            parsed["conversation"] = status["conversation"]
-        
-        print(f"📊 Status recebido - Mensagem: {parsed['message_id']}, Status: {parsed['status']}")
-        return parsed
-    
+    # --- GESTÃO DE MÍDIA ---
+
+    def get_media_url(self, media_id: str) -> Optional[str]:
+        """Recupera URL de download"""
+        try:
+            url = f"https://graph.facebook.com/v24.0/{media_id}"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            return response.json().get("url")
+        except Exception:
+            return None
+
     def mark_as_read(self, message_id: str) -> Dict[str, Any]:
-        """
-        Marca uma mensagem como lida
-        
-        Args:
-            message_id: ID da mensagem recebida
-        
-        Returns:
-            Resposta da API
-        """
+        """Informa ao WhatsApp que a mensagem foi lida"""
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
             "message_id": message_id
         }
         return self._send_request(payload)
-
-    # ===== GESTÃO DE MÍDIA (UPLOAD/DOWNLOAD) =====
-
-    def get_media_url(self, media_id: str) -> Optional[str]:
-        """
-        Recupera a URL de download de uma mídia recebida pelo ID.
-        API: GET /v24.0/{media-id}
-        """
-        try:
-            url = f"https://graph.facebook.com/v24.0/{media_id}"
-            response = requests.get(url, headers=self.headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("url")
-        except Exception as e:
-            print(f"❌ Erro ao obter URL da mídia {media_id}: {e}")
-            return None
 
     def download_media(self, media_url: str) -> Optional[bytes]:
         """
