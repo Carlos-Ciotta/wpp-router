@@ -77,3 +77,27 @@ class SessionRepository:
         except:
             pass
         return None
+
+    async def get_sessions_by_attendant(self, attendant_id: str, status: Optional[str] = None):
+        """Busca todas as sessões de um atendente, opcionalmente filtradas por status."""
+        query = {"attendant_id": attendant_id}
+        if status:
+            query["status"] = status
+        
+        cursor = self._collection.find(query).sort("last_interaction_at", -1)
+        sessions = []
+        async for doc in cursor:
+            sessions.append(ChatSession(**doc))
+        return sessions
+
+    async def get_all_sessions(self, status: Optional[str] = None, limit: int = 100):
+        """Busca todas as sessões, opcionalmente filtradas por status."""
+        query = {}
+        if status:
+            query["status"] = status
+        
+        cursor = self._collection.find(query).sort("last_interaction_at", -1).limit(limit)
+        sessions = []
+        async for doc in cursor:
+            sessions.append(ChatSession(**doc))
+        return sessions
