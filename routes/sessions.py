@@ -2,9 +2,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from repositories.session import SessionRepository
-from core.dependencies import get_session_repository
+from core.dependencies import get_session_repository, get_chat_service
+from services.chat_service import ChatService
 from domain.session.chat_session import ChatSession, SessionStatus
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -13,8 +14,9 @@ router = APIRouter(prefix="/sessions", tags=["Sessions"])
 class SessionResponse(BaseModel):
     phone_number: str
     status: str
-    created_at: datetime
-    last_interaction_at: datetime
+    created_at: float
+    last_interaction_at: float
+    last_client_interaction_at: Optional[float] = None
     attendant_id: Optional[str] = None
     category: Optional[str] = None
     _id: Optional[str] = None
@@ -22,77 +24,104 @@ class SessionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/attendant/{attendant_id}", response_model=List[SessionResponse])
-async def get_sessions_by_attendant(
-    attendant_id: str,
-    status: Optional[str] = Query(None, description="Filtrar por status: waiting_menu, active ou closed"),
-    session_repo: SessionRepository = Depends(get_session_repository)
+class StartSessionRequest(BaseModel):
+    phone_number: str
+    attendant_id: str
+    category: str
+
+class TransferSessionRequest(BaseModel):
+    phone_number: str
+    new_attendant_id: str
+
+@router.post("/start", response_model=SessionResponse, status_code=201)
+async def start_session(
+    request: StartSessionRequest,
+    chat_service: ChatService = Depends(get_chat_service)
 ):
     """
-    Retorna todas as sessões de um atendente específico.
-    
-    - **attendant_id**: ID do atendente
-    - **status**: (Opcional) Filtrar por status da sessão
+    Inicia manualmente uma nova sessão de atendimento.
     """
     try:
-        sessions = await session_repo.get_sessions_by_attendant(attendant_id, status)
-        return [SessionResponse(**session.dict()) for session in sessions]
+        session = await chat_service.start_chat(request.phone_number, request.attendant_id, request.category)
+        return SessionResponse(**session.to_dict())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/attendant/{attendant_id}/active", response_model=List[SessionResponse])
-async def get_active_sessions_by_attendant(
+@router.post("/transfer")
+async def transfer_session(
+    request: TransferSessionRequest,
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Transfere uma sessão ativa para outro atendente.
+    """
+    try:
+        await chat_service.transfer_chat(request.phone_number, request.new_attendant_id)
+        return {"message": "Atendimento transferido com sucesso"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{phone_number}/finish")
+async def finish_session(
+    phone_number: str,
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Finaliza uma sessão ativa.
+    """
+    try:
+        await chat_service.finish_session(phone_number)
+        return {"message": "Sessão finalizada com sucesso"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/attendant/{attendant_id}", response_model=List[SessionResponse])
+async def get_sessions_by_attendant(
     attendant_id: str,
+    limit: int = 50,
+    skip: int = 0,
     session_repo: SessionRepository = Depends(get_session_repository)
 ):
     """
-    Retorna apenas as sessões ativas de um atendente específico.
-    
-    - **attendant_id**: ID do atendente
+    Retorna a última sessão de cada cliente atendido por um atendente específico.
     """
     try:
-        sessions = await session_repo.get_sessions_by_attendant(
-            attendant_id, 
-            status=SessionStatus.ACTIVE.value
-        )
-        return [SessionResponse(**session.dict()) for session in sessions]
+        cursor = session_repo.get_sessions_by_attendant(attendant_id, limit, skip)
+        sessions = []
+        async for doc in cursor:
+            # O repositório pode retornar dict ou ChatSession. Garantimos a conversão.
+            if isinstance(doc, dict):
+                sessions.append(SessionResponse(**doc))
+            elif isinstance(doc, ChatSession):
+                sessions.append(SessionResponse(**doc.to_dict()))
+            else:
+                 # Caso venha do motor cursor diretamente como dict
+                 sessions.append(SessionResponse(**doc))
+                 
+        return sessions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=List[SessionResponse])
 async def get_all_sessions(
-    status: Optional[str] = Query(None, description="Filtrar por status: waiting_menu, active ou closed"),
     limit: int = Query(100, description="Limite de resultados (máx: 500)", le=500),
+    skip: int = 0,
     session_repo: SessionRepository = Depends(get_session_repository)
 ):
     """
-    Retorna todas as sessões do sistema.
-    
-    - **status**: (Opcional) Filtrar por status da sessão
-    - **limit**: Número máximo de resultados (padrão: 100, máximo: 500)
+    Retorna a última sessão de cada cliente do sistema.
     """
     try:
-        sessions = await session_repo.get_all_sessions(status, limit)
-        return [SessionResponse(**session.dict()) for session in sessions]
+        cursor = session_repo.get_all_sessions(limit, skip)
+        sessions = []
+        async for doc in cursor:
+             session_data = doc.to_dict() if hasattr(doc, "to_dict") else doc
+             sessions.append(SessionResponse(**session_data))
+        return sessions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/phone/{phone_number}", response_model=Optional[SessionResponse])
-async def get_session_by_phone(
-    phone_number: str,
-    session_repo: SessionRepository = Depends(get_session_repository)
-):
-    """
-    Retorna a sessão ativa de um número de telefone específico.
-    
-    - **phone_number**: Número de telefone do cliente
-    """
-    try:
-        session = await session_repo.get_active_session(phone_number)
-        if not session:
-            raise HTTPException(status_code=404, detail="Sessão ativa não encontrada")
-        return SessionResponse(**session.dict())
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

@@ -10,8 +10,20 @@ class SessionStatus(str, Enum):
 class ChatSession():
     phone_number: str
     status: SessionStatus = SessionStatus.WAITING_MENU
-    created_at: datetime 
-    last_interaction_at: datetime 
+    created_at: int 
+    last_interaction_at: int 
+    last_client_interaction_at: Optional[int]=None
     attendant_id: Optional[str] = None
     category: Optional[str] = None
     _id: Optional[str] = None
+
+    def to_dict(self):
+        return {
+            "phone_number": self.phone_number,
+            "status": self.status.value,
+            "created_at": self.created_at,
+            "last_interaction_at": self.last_interaction_at,
+            "last_client_interaction_at": self.last_client_interaction_at,
+            "attendant_id": self.attendant_id,
+            "category": self.category,
+        }

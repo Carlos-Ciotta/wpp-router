@@ -2,19 +2,25 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from domain.session.chat_session import ChatSession, SessionStatus
 from typing import Optional
 from datetime import datetime
+from bson import ObjectId
+
+def _serialize_doc(doc: dict) -> dict:
+    """Convert MongoDB ObjectId to string for JSON serialization."""
+    if doc is None:
+        return None
+    
+    if "_id" in doc and isinstance(doc["_id"], ObjectId):
+        doc["_id"] = str(doc["_id"])
+    
+    return doc
 
 class SessionRepository:
     def __init__(self, collection: AsyncIOMotorCollection):
         self._collection = collection
 
-    async def get_active_session(self, phone: str) -> Optional[ChatSession]:
-        data = await self._collection.find_one({
-            "phone_number": phone, 
-            "status": {"$ne": SessionStatus.CLOSED.value}
-        })
-        if data:
-            return ChatSession(**data)
-        return None
+    # ------------------------
+    # Query Operations
+    # ------------------------
 
     async def get_last_session(self, phone: str) -> Optional[ChatSession]:
         """Recupera a última sessão do cliente, independente do status."""
@@ -25,79 +31,71 @@ class SessionRepository:
             # If using find().limit(1), we need to iterate or to_list
             results = await cursor.to_list(length=1)
             if results:
-                return ChatSession(**results[0])
+                doc = _serialize_doc(results[0])
+                return ChatSession(**doc)
         except Exception:
             return None
         return None
 
-    async def create_session(self, session: ChatSession):
-        await self._collection.insert_one(session.dict(exclude={"_id"}))
-        return session
+    async def get_sessions_by_attendant(self, 
+                                        attendant_id: str, 
+                                        limit:int = 50, 
+                                        skip:int = 0):
+        
+        """Busca todas as sessões de um atendente, opcionalmente filtradas por status."""
+        
+        cursor = self._collection.find({"attendant_id": attendant_id}).sort("last_interaction_at", -1).limit(limit).skip(skip)
 
-    async def update_last_interaction(self, phone: str, interaction_time: datetime = None):
-        if interaction_time is None:
-            interaction_time = datetime.now()
-        await self._collection.update_one(
-            {"phone_number": phone, "status": {"$ne": SessionStatus.CLOSED.value}},
-            {"$set": {"last_interaction_at": interaction_time}}
+        async for doc in cursor:
+            yield _serialize_doc(doc)
+
+    async def get_all_sessions(self,limit: int = 100, skip : int = 0):
+        """Busca todas as sessões, opcionalmente filtradas por status."""
+        
+        cursor = self._collection.find().sort("last_interaction_at", -1).limit(limit).skip(skip)
+
+        async for doc in cursor:
+            yield _serialize_doc(doc)
+    
+    async def get_last_assigned_attendant_id(self):
+        """Recupera o ID do último atendente atribuído a uma sessão ativa."""
+        cursor = self._collection.find({"attendant_id": {"$ne": None}}).sort("last_interaction_at", -1).limit(1)
+        results = await cursor.to_list(length=1)
+        if results:
+                return results[0].get("attendant_id")
+        return None
+    # CRUD Operations
+
+    async def create_session(self, session: dict):
+        result = await self._collection.find_one_and_update(
+            {"phone_number": session.get("phone_number")},
+            {"$set": session},
+            upsert=True,
+            return_document=True
         )
+        return _serialize_doc(result)
 
     async def close_session(self, phone: str):
-        await self._collection.update_one(
+        response=await self._collection.update_one(
             {"phone_number": phone, "status": {"$ne": SessionStatus.CLOSED.value}},
             {"$set": {"status": SessionStatus.CLOSED.value}}
         )
+        return response.modified_count > 0
+    
+    async def update(self, data:dict, phone_number:str):
+        response = await self._collection.update_one({"phone_number": phone_number}, {"$set": data})
 
+        return response.modified_count > 0
+    
     async def assign_attendant(self, phone: str, attendant_id: str, category: str):
-        await self._collection.update_one(
-            {"phone_number": phone, "status": {"$ne": SessionStatus.CLOSED.value}},
+        response = await self._collection.update_one(
+            {"phone_number": phone},
             {
                 "$set": {
-                    "status": SessionStatus.ACTIVE.value,
                     "attendant_id": attendant_id,
-                    "category": category,
-                    "last_interaction_at": datetime.now()
+                    "category": category
                 }
             }
         )
 
-    async def get_last_assigned_attendant_id(self, category: str) -> Optional[str]:
-        try:
-            # Find the most recent session with an attendant assigned (not a QUEUE)
-            # Assuming real attendants have ObjectId-like strings, queues are "QUEUE_..."
-            cursor = self._collection.find(
-                {
-                    "category": category, 
-                    "attendant_id": {"$exists": True, "$ne": None}
-                }
-            ).sort("last_interaction_at", -1).limit(1)
-            
-            async for doc in cursor:
-                return doc.get("attendant_id")
-        except:
-            pass
-        return None
-
-    async def get_sessions_by_attendant(self, attendant_id: str, status: Optional[str] = None):
-        """Busca todas as sessões de um atendente, opcionalmente filtradas por status."""
-        query = {"attendant_id": attendant_id}
-        if status:
-            query["status"] = status
-        
-        cursor = self._collection.find(query).sort("last_interaction_at", -1)
-        sessions = []
-        async for doc in cursor:
-            sessions.append(ChatSession(**doc))
-        return sessions
-
-    async def get_all_sessions(self, status: Optional[str] = None, limit: int = 100):
-        """Busca todas as sessões, opcionalmente filtradas por status."""
-        query = {}
-        if status:
-            query["status"] = status
-        
-        cursor = self._collection.find(query).sort("last_interaction_at", -1).limit(limit)
-        sessions = []
-        async for doc in cursor:
-            sessions.append(ChatSession(**doc))
-        return sessions
+        return response.modified_count > 0

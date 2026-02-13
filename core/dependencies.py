@@ -7,6 +7,8 @@ from repositories.message import MessageRepository
 from repositories.session import SessionRepository
 from repositories.attendant import AttendantRepository
 from repositories.config import ConfigRepository
+from repositories.template import TemplateRepository
+from repositories.contact import ContactRepository
 from services.attendant_service import AttendantService
 from client.whatsapp.V24 import WhatsAppClient
 from utils.cache import Cache
@@ -47,6 +49,14 @@ async def get_config_repository():
     collection = await get_db_collection("configs")
     return ConfigRepository(collection)
 
+async def get_template_repository():
+    collection = await get_db_collection("templates")
+    return TemplateRepository(collection)
+
+async def get_contact_repository():
+    collection = await get_db_collection("contacts")
+    return ContactRepository(collection)
+
 async def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {
@@ -66,4 +76,6 @@ async def get_chat_service():
     session_repo = await get_session_repository()
     attendant_repo = await get_attendant_repository()
     config_repo = await get_config_repository()
-    return ChatService(wa_client, session_repo, attendant_repo, config_repo, cache=await get_cache())
+    template_repo = await get_template_repository()
+    contact_repo = await get_contact_repository()
+    return ChatService(wa_client, session_repo, attendant_repo, config_repo, template_repo, contact_repo, cache=await get_cache())

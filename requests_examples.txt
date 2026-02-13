@@ -1,6 +1,10 @@
-=== EXEMPLOS DE REQUESTS PARA ATTENDANTS ===
+=== EXEMPLOS DE REQUESTS - WPP ROUTER ===
 
-1. CRIAR ATENDENTE (POST /attendants/)
+---------------------------------------------------
+### 1. ATENDENTES (ATTENDANTS)
+---------------------------------------------------
+
+1.1 CRIAR ATENDENTE
 URL: http://localhost:8000/attendants/
 Method: POST
 Headers: Content-Type: application/json
@@ -11,98 +15,167 @@ Body:
   "password": "senha123",
   "sector": "Comercial",
   "clients": [
-    "5511999999999",
-    "5511888888888"
+    "5511999999999"
   ],
   "working_hours": {
-    "0": [
-      { "start": "09:00", "end": "12:00" },
-      { "start": "13:00", "end": "18:00" }
-    ],
-    "1": [
-      { "start": "09:00", "end": "12:00" },
-      { "start": "13:00", "end": "18:00" }
-    ],
-    "2": [
-      { "start": "09:00", "end": "12:00" },
-      { "start": "13:00", "end": "18:00" }
-    ],
-    "3": [
-      { "start": "09:00", "end": "12:00" },
-      { "start": "13:00", "end": "18:00" }
-    ],
-    "4": [
-      { "start": "09:00", "end": "12:00" },
-      { "start": "13:00", "end": "17:00" }
-    ]
+    "0": [{ "start": "09:00", "end": "18:00" }],
+    "1": [{ "start": "09:00", "end": "18:00" }],
+    "2": [{ "start": "09:00", "end": "18:00" }],
+    "3": [{ "start": "09:00", "end": "18:00" }],
+    "4": [{ "start": "09:00", "end": "18:00" }]
   }
 }
 
-Nota: 
-- "0" = Segunda-feira, "6" = Domingo
-- "clients": Lista de números de telefone (formato WPPID)
-- "working_hours": Dicionário onde a chave é o dia da semana
-
----------------------------------------------------
-
-2. LOGIN (POST /attendants/login)
+1.2 LOGIN
 URL: http://localhost:8000/attendants/login
 Method: POST
 Headers: Content-Type: application/x-www-form-urlencoded
-Body (Form Data):
-username: joao.silva
-password: senha123
+Body:
+username=joao.silva&password=senha123
 
-Response Esperado:
-{
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5c...",
-    "token_type": "bearer"
-}
-
----------------------------------------------------
-
-3. LISTAR ATENDENTES (GET /attendants/)
+1.3 LISTAR ATENDENTES
 URL: http://localhost:8000/attendants/
 Method: GET
 
+
+---------------------------------------------------
+### 2. CONFIGURAÇÕES (CONFIG)
 ---------------------------------------------------
 
-4. OBTER CONFIGURAÇÃO ATUAL (GET /config/)
+2.1 OBTER CONFIGURAÇÃO
 URL: http://localhost:8000/config/
 Method: GET
 
----------------------------------------------------
-
-5. ATUALIZAR CONFIGURAÇÃO (POST /config/)
+2.2 ATUALIZAR CONFIGURAÇÃO
 URL: http://localhost:8000/config/
 Method: POST
 Headers: Content-Type: application/json
 Body:
 {
-    "greeting_message": "Olá! Seja bem-vindo à nossa empresa. Como podemos ajudar hoje?",
+    "greeting_message": "Olá! Seja bem-vindo.",
     "greeting_header": "Atendimento Virtual",
     "greeting_buttons": [
-        {
-            "id": "btn_comercial",
-            "title": "Falar com Vendas",
-            "sector": "Comercial"
-        },
-        {
-            "id": "btn_financeiro",
-            "title": "Financeiro / Boletos",
-            "queue_id": "QUEUE_FIN",
-            "sector": "Financeiro"
-        },
-        {
-            "id": "btn_suporte",
-            "title": "Suporte Técnico",
-            "queue_id": "QUEUE_SUP",
-            "sector": "Suporte"
-        }
+        { "id": "btn_vendas", "title": "Vendas", "sector": "Comercial" },
+        { "id": "btn_suporte", "title": "Suporte", "sector": "Suporte" }
     ],
-    "attendant_assigned_message": "✅ Um de nossos especialistas, *{attendant_name}*, irá te atender agora.",
-    "absence_message": "⚠️ Nosso time comercial já encerrou o expediente. Retornaremos amanhã às 08h.",
-    "not_found_message": "🚫 Não encontramos seu cadastro vinculado a um vendedor específico.",
-    "queue_redirect_message": "🔄 Transferindo para o setor de {sector}...",
-    "inactivity_closed_message": "👋 Encerramos este atendimento por falta de interação. Se precisar, chame novamente!"
+    "attendant_assigned_message": "Você será atendido por {attendant_name}.",
+    "absence_message": "Estamos fora do horário de atendimento.",
+    "not_found_message": "Vendedor não encontrado.",
+    "queue_redirect_message": "Redirecionando...",
+    "inactivity_closed_message": "Atendimento encerrado por inatividade."
 }
+
+
+---------------------------------------------------
+### 3. SESSÕES (SESSIONS) - Falando com o BOT/Atendente
+---------------------------------------------------
+
+3.1 LISTAR TODAS SESSÕES
+URL: http://localhost:8000/sessions/?limit=20&skip=0
+Method: GET
+
+3.2 SESSÕES DE UM ATENDENTE
+URL: http://localhost:8000/sessions/attendant/{ATTENDANT_ID}
+URL Exemplo: http://localhost:8000/sessions/attendant/65c4ec...
+Method: GET
+
+3.3 SESSÃO ATIVA DE UM CLIENTE (Ultima sessão)
+URL: http://localhost:8000/sessions/phone/5511999999999
+Method: GET
+
+3.4 INICIAR SESSÃO MANUALMENTE
+URL: http://localhost:8000/sessions/start
+Method: POST
+Body:
+{
+    "phone_number": "5511999999999",
+    "attendant_id": "65c4ec...", 
+    "category": "Ativo"
+}
+
+3.5 TRANSFERIR ATENDIMENTO
+URL: http://localhost:8000/sessions/transfer
+Method: POST
+Body:
+{
+    "phone_number": "5511999999999",
+    "new_attendant_id": "65c4ec..."
+}
+
+3.6 FINALIZAR SESSÃO
+URL: http://localhost:8000/sessions/5511999999999/finish
+Method: POST
+
+
+---------------------------------------------------
+### 4. MENSAGENS (MESSAGES) - Envio Ativo
+---------------------------------------------------
+
+4.1 ENVIAR TEXTO (Requer Janela 24h)
+URL: http://localhost:8000/messages/text
+Method: POST
+Body:
+{
+    "to": "5511999999999",
+    "text": "Olá, tudo bem?"
+}
+
+4.2 ENVIAR IMAGEM
+URL: http://localhost:8000/messages/image
+Method: POST
+Body:
+{
+    "to": "5511999999999",
+    "image_url": "https://example.com/imagem.jpg",
+    "caption": "Veja esta foto"
+}
+
+4.3 ENVIAR TEMPLATE (Abre Janela 24h)
+URL: http://localhost:8000/messages/template
+Method: POST
+Body:
+{
+    "to": "5511999999999",
+    "template_name": "hello_world",
+    "language_code": "en_US"
+}
+ou com componentes:
+{
+    "to": "5511999999999",
+    "template_name": "codigo_verificacao",
+    "components": [
+        {
+            "type": "body",
+            "parameters": [
+                { "type": "text", "text": "12345" }
+            ]
+        }
+    ]
+}
+
+
+---------------------------------------------------
+### 5. CONTATOS (CONTACTS)
+---------------------------------------------------
+
+5.1 LISTAR CONTATOS
+URL: http://localhost:8000/contacts/?limit=50
+Method: GET
+
+5.2 DETALHE DO CONTATO
+URL: http://localhost:8000/contacts/5511999999999
+Method: GET
+
+
+---------------------------------------------------
+### 6. WHATSAPP (WEBHOOK & TEMPLATES)
+---------------------------------------------------
+
+6.1 SINCRONIZAR TEMPLATES (Meta -> Banco Local)
+URL: http://localhost:8000/whatsapp/templates/sync
+Method: POST
+
+6.2 LISTAR TEMPLATES (Banco Local)
+URL: http://localhost:8000/whatsapp/templates
+Method: GET
+
