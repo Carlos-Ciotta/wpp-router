@@ -90,7 +90,7 @@ class ChatService:
             yield sessions
         except ValueError as ve:
             logging.error(f"Erro de validação: {ve}")
-            return None
+            return
         
     # ------------------------    # Sending Messages
     # ------------------------
@@ -332,7 +332,6 @@ class ChatService:
                                 created_at=datetime.now(TZ_BR).timestamp(),
                                 last_client_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 last_interaction_at=datetime.now(TZ_BR).timestamp(),
-                                created_at=datetime.now(TZ_BR).timestamp(),
                                 )
         await self.session_repo.create_session(new_session)
         await self.set_active_sessions(phone=phone)
