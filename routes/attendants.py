@@ -19,56 +19,11 @@ class AttendantCreate(BaseModel):
     name: str
     login: str
     password: str
+    permission: str
     sector: List[str]
     clients: List[str] = []
     welcome_message: Optional[str] = None
     working_hours: Optional[Dict[str, List[WorkIntervalSchema]]] = None
-
-@router.post("/transfer")
-async def transfer_chat(
-    client_phone: str = Body(..., embed=True),
-    target_attendant_id: str = Body(..., embed=True),
-    chat_service: ChatService = Depends(get_chat_service)
-):
-    """
-    Transfere um cliente para outro atendente.
-    """
-    try:
-        result = await chat_service.transfer_attendant(client_phone, target_attendant_id)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/finish")
-async def finish_session(
-    client_phone: str = Body(..., embed=True),
-    chat_service: ChatService = Depends(get_chat_service)
-):
-    """
-    Finaliza a sessão (marca como não ativa).
-    """
-    try:
-        return await chat_service.finish_session(client_phone)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/reopen")
-async def reopen_session(
-    client_phone: str = Body(..., embed=True),
-    attendant_id: str = Body(..., embed=True),
-    chat_service: ChatService = Depends(get_chat_service)
-):
-    """
-    Reabre chat (ou cria novo) e atribui ao atendente.
-    """
-    try:
-        return await chat_service.reopen_session(client_phone, attendant_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_attendant(
@@ -101,6 +56,26 @@ async def login(
     
     return await service.create_token_for_attendant(attendant)
 
+@router.post("/logout")
+async def logout(
+    token:dict,
+    service: AttendantService = Depends(get_attendant_service)
+):
+    await service.logout(token)
+
+@router.post("/verify-token")
+async def verify_token(
+    token:dict,
+    service: AttendantService = Depends(get_attendant_service)
+):
+    token = await service.verify_token(token)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
 @router.get("/", response_model=List[dict])
 async def list_attendants(
     service: AttendantService = Depends(get_attendant_service)
@@ -114,4 +89,4 @@ async def list_attendants(
     for att in attendants:
         if "_id" in att:
             att["_id"] = str(att["_id"])
-    return attendants
+    yield attendants

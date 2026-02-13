@@ -1,44 +1,101 @@
 from domain.attendants.attendant import Attendant
-from core.security import get_password_hash, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from repositories.attendant import AttendantRepository
+from core.security import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from datetime import timedelta
+from utils.cache import Cache
 
 class AttendantService():
-    def __init__(self, repository) -> None:
+    def __init__(self, repository:AttendantRepository,
+                 cache:Cache) -> None:
         self._repository = repository
-    
+        self._cache = cache
+
+    # ----------------
+    # Cache
+    # ----------------
+    async def reset_users_cache(self):
+        try:
+            if self._cache.ensure():
+                self._cache.delete("users")
+                self._cache.set("users", self._repository.list())
+        except Exception as e:
+            raise ("Error during cache search: ", e)
+    async def get_users_cached(self):
+        try:
+            if self._cache.ensure():
+                yield self._cache.get("users")
+            return
+        except Exception as e:
+            raise ("Error during cache search: ", e)
+    # ----------------
+    # Helpers
+    # ----------------
+    async def find_by_login(self, login: str):
+        try:
+            cached = self.get_users_cached()
+            if cached:
+                return cached.get("login") == login
+            return await self._repository.find_by_login(login)
+        except Exception as e:
+            raise Exception(f"Error finding attendant by login: {str(e)}")
+    # ----------------
+    # CRUD Operations
+    # ----------------
     async def create_attendant(self, data:dict):
         try:
-            # Hash password before saving
-            if "password" in data:
-                data["password"] = get_password_hash(data["password"])
-                
+            exists = self._find_by_login(data["login"])
+            
+            if exists: raise Exception("Attendant with this login already exists.")
+
             attendant = Attendant(**data)
-            return await self._repository.save(attendant.to_dict())
+            result= await self._repository.save(attendant.to_dict())
+            if result:
+                self._cache.delete("users")
+                self.reset_users_cache()
         except Exception as e:
             raise Exception(f"Error creating attendant: {str(e)}")
             
     async def authenticate_attendant(self, login: str, password: str):
         # We need a method to find by login in repo
-        attendant = await self._repository.find_by_login(login)
+        attendant = await self.find_by_login(login)
+
+        attendant = Attendant(**attendant)
+
         if not attendant:
             return None
-        if not verify_password(password, attendant["password"]):
+        if not attendant.password_matches(password):
             return None
-        return attendant
+        
+        return True
         
     async def create_token_for_attendant(self, attendant: dict):
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": attendant["login"], "sector": attendant["sector"]},
+            data={"sub": attendant["login"], "sector": attendant["sector"], "permission":attendant['permission']},
             expires_delta=access_token_expires
         )
-        return {"access_token": access_token, "token_type": "bearer"}
+        token = {"access_token": access_token, "token_type": "bearer"}
+        self._cache.set("auth_token:", token)
+
+        return token
     
-    async def get_attendant(self, _id:str):
+    async def verify_token(self, token:str):
         try:
-            return await self._repository.get_by_id(_id)
+            token = self._cache.get(f"auth_token:{token}")
+            if token:
+                return True
+            else:
+                return False
+        
         except Exception as e:
-            raise Exception(f"Error fetching attendant: {str(e)}")
+            raise ("Error during token verification: ", e)
+    
+    async def logout(self, token:dict):
+        try:
+            self._cache.delete(f"auth_token:{token}")
+            return
+        except Exception as e:
+            raise ("Error during logout: ", e)
         
     async def update_attendant(self, _id:str, data:dict):
         try:
