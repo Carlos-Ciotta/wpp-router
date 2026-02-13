@@ -85,8 +85,8 @@ class ChatService:
             if self._cache.ensure:
                 cached = await self._cache.get(f"sessions:{attendant_id}")
                 if cached:
-                    return cached
-
+                    yield cached
+                return
             sessions = [s async for s in self.session_repo.get_sessions_by_attendant(attendant_id)]
             
             await self._cache.set(f"sessions:{attendant_id}", sessions)
