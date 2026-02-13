@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorCollection
-from domain.session.chat_session import ChatSession, SessionStatus
+from domain.session.chat_session import  SessionStatus
 from typing import Optional
 from datetime import datetime
 from bson import ObjectId
@@ -21,8 +21,24 @@ class SessionRepository:
     # ------------------------
     # Query Operations
     # ------------------------
-
-    async def get_last_session(self, phone: str) -> Optional[ChatSession]:
+    async def get_active_sessions(self):
+        try:
+            cursor = self._collection.find({
+                    "status": {
+                        "$in": [
+                            SessionStatus.ACTIVE.value,
+                            SessionStatus.WAITING_MENU.value
+                        ]
+                    }
+                },
+                {"_id": 0}).sort("last_interaction_at", -1)
+            
+            yield cursor.to_list()
+        
+        except Exception:
+            return None
+        
+    async def get_last_session(self, phone: str) -> Optional[dict]:
         """Recupera a última sessão do cliente, independente do status."""
         cursor = self._collection.find({"phone_number": phone}).sort("last_interaction_at", -1).limit(1)
         # Note: sort by last_interaction_at desc
@@ -32,7 +48,7 @@ class SessionRepository:
             results = await cursor.to_list(length=1)
             if results:
                 doc = _serialize_doc(results[0])
-                return ChatSession(**doc)
+                return doc
         except Exception:
             return None
         return None

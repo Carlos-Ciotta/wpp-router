@@ -1,7 +1,6 @@
 """Rotas para gerenciamento de sessões de chat."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
-from repositories.session import SessionRepository
 from core.dependencies import get_session_repository, get_chat_service
 from services.chat_service import ChatService
 from domain.session.chat_session import ChatSession, SessionStatus
@@ -82,15 +81,13 @@ async def finish_session(
 @router.get("/attendant/{attendant_id}", response_model=List[SessionResponse])
 async def get_sessions_by_attendant(
     attendant_id: str,
-    limit: int = 50,
-    skip: int = 0,
-    session_repo: SessionRepository = Depends(get_session_repository)
+    chat_service: ChatService = Depends(get_chat_service)
 ):
     """
     Retorna a última sessão de cada cliente atendido por um atendente específico.
     """
     try:
-        cursor = session_repo.get_sessions_by_attendant(attendant_id, limit, skip)
+        cursor = chat_service.get_sessions_by_attendant(attendant_id)
         sessions = []
         async for doc in cursor:
             # O repositório pode retornar dict ou ChatSession. Garantimos a conversão.
@@ -108,15 +105,13 @@ async def get_sessions_by_attendant(
 
 @router.get("/", response_model=List[SessionResponse])
 async def get_all_sessions(
-    limit: int = Query(100, description="Limite de resultados (máx: 500)", le=500),
-    skip: int = 0,
-    session_repo: SessionRepository = Depends(get_session_repository)
+    chat_service: ChatService = Depends(get_chat_service)
 ):
     """
     Retorna a última sessão de cada cliente do sistema.
     """
     try:
-        cursor = session_repo.get_all_sessions(limit, skip)
+        cursor = chat_service.list_sessions()
         sessions = []
         async for doc in cursor:
              session_data = doc.to_dict() if hasattr(doc, "to_dict") else doc

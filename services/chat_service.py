@@ -42,21 +42,12 @@ class ChatService:
         config = await self._config_repo.get_config()
         return ChatConfig(**config.dict()) if config else ChatConfig()
 
-
-    async def get_session_by_attendant(self, 
-                                       attendant_id: str) -> Optional[list]:
-        try:
-            await self._validate_objectid(attendant_id)
-            cached = self._cache.get()
-            if cached:
-                return cached
-        
-        except ValueError as ve:
-            logging.error(f"Erro de validação: {ve}")
-            return None
-        
-    async def set_active_sessions(self, phone:str) -> None:
-        await self._cache.set(key="active_sessions", value=phone)
+    async def _invalidate_attendant_cache(self, attendant_id: str):
+        if attendant_id:
+            try:
+                await self._cache.delete(f"sessions:{attendant_id}")
+            except Exception as e:
+                logging.error(f"Erro ao invalidar cache do atendente {attendant_id}: {e}")
 
     # ------------------------
     # Template Operations
@@ -66,7 +57,14 @@ class ChatService:
         """Busca templates do WhatsApp e salva no repositório local."""
         try:
             raw_templates = self.wa_client.get_templates(status="APPROVED")
-            templates = [Template.from_dict(t) for t in raw_templates]
+            templates = [{
+                "id": t.get("id"),
+                "name": t.get("name"),
+                "status": t.get("status"),
+                "category": t.get("category"),
+                "language": t.get("language"),
+                "components": t.get("components", [])
+            } for t in raw_templates]
             await self._template_repo.save_templates(templates)
             return templates
         except Exception as e:
@@ -80,62 +78,30 @@ class ChatService:
     # ------------------------
     # Query operations
     # ------------------------
-    async def get_active_sessions(self) -> list[ChatSession]:
-        return await self._cache.get(key="active_sessions") or []
-    
-    async def get_chat_by_attendant(self, attendant_id: str):
+    async def get_sessions_by_attendant(self, attendant_id: str):
         try:
-            self._validate_objectid(attendant_id)
-            sessions = await self.session_repo.get_sessions_by_attendant(attendant_id)
+            await self._validate_objectid(attendant_id)
+            
+            if self._cache.ensure:
+                cached = await self._cache.get(f"sessions:{attendant_id}")
+                if cached:
+                    return cached
+
+            sessions = [s async for s in self.session_repo.get_sessions_by_attendant(attendant_id)]
+            
+            await self._cache.set(f"sessions:{attendant_id}", sessions)
             yield sessions
+        
         except ValueError as ve:
             logging.error(f"Erro de validação: {ve}")
-            return
-        
-    # ------------------------    # Sending Messages
-    # ------------------------
-
-    async def send_text_message(self, phone: str, text: str):
-        """Envia mensagem de texto validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-        
-        response = self.wa_client.send_text(phone, text)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
-
-    async def send_image_message(self, phone: str, image_url: str, caption: str = None):
-        """Envia imagem validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = self.wa_client.send_image(phone, image_url, caption=caption)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
-
-    async def send_video_message(self, phone: str, video_url: str, caption: str = None):
-        """Envia vídeo validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = self.wa_client.send_video(phone, video_url, caption=caption)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
-
-    async def send_document_message(self, phone: str, document_url: str, caption: str = None, filename: str = None):
-        """Envia documento validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
-
-    async def send_template_message(self, phone: str, template_name: str, language_code: str = "pt_BR", components: list = None):
-        """Envia mensagem de template (não requer janela de 24h) e atualiza interação."""
-        response = self.wa_client.send_template(phone, template_name, language_code, components)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
+            return None
+    
+    async def list_sessions(self):
+        """Lista todas as sessões de chat."""
+        try:
+            yield [s async for s in self.session_repo.get_all_sessions()]
+        except Exception as e:
+            logging.error(f"Erro ao listar sessões: {e}")
 
     # ------------------------
     # Sending Messages
@@ -186,7 +152,7 @@ class ChatService:
         # 1. Verifica se já tem sessão ativa
         try:
             session = await self.session_repo.get_last_session(phone)
-            if session.get("status") == SessionStatus.ACTIVE.value or session.get("status") == SessionStatus.WAITING_MENU.value:
+            if session and (session.get("status") == SessionStatus.ACTIVE.value or session.get("status") == SessionStatus.WAITING_MENU.value):
                 raise ValueError("Cliente já possui uma sessão ativa ou está no menu de espera")
             
 
@@ -201,6 +167,7 @@ class ChatService:
             )
             await self.session_repo.create_session(new_session.to_dict())
             await self.set_active_sessions(phone=phone)
+            await self._invalidate_attendant_cache(attendant_id)
 
             return new_session
         except Exception as e:
@@ -217,18 +184,30 @@ class ChatService:
         # 2. Verifica se tem sessão ativa
         session = await self.session_repo.get_last_session(phone = phone)
 
-        if not session.get("status") == SessionStatus.ACTIVE.value:
+        if not session or not session.get("status") == SessionStatus.ACTIVE.value:
             raise ValueError("Cliente não possui sessão ativa para transferir.")
             
+        old_attendant_id = session.get("attendant_id")
         sector = new_attendant.get("sector")
         
         assing = await self.session_repo.assign_attendant(phone, new_attendant_id, sector)
+        
+        await self._invalidate_attendant_cache(new_attendant_id)
+        if old_attendant_id:
+            await self._invalidate_attendant_cache(old_attendant_id)
         
         return assing
 
     async def finish_session(self, phone: str):
         """Finaliza a sessão ativa do cliente."""
+        session = await self.session_repo.get_last_session(phone)
+        attendant_id = session.get("attendant_id") if session else None
+
         await self.session_repo.close_session(phone)
+        
+        if attendant_id:
+            await self._invalidate_attendant_cache(attendant_id)
+
         return {"message": "Sessão finalizada com sucesso."}
 
     async def can_send_free_message(self, phone: str) -> bool:
@@ -288,7 +267,8 @@ class ChatService:
             return await self._automated_start_new_session(phone, config)
 
         # Gerenciamento de Estado usando Match (Python 3.10+)
-        match session.status:
+        status = session.get("status")
+        match status:
             case SessionStatus.WAITING_MENU:
                 await self._handle_menu_selection(session, msg_dict, config)
             case SessionStatus.ACTIVE:
@@ -347,7 +327,7 @@ class ChatService:
             header_text=config.greeting_header
         )
 
-    async def _handle_menu_selection(self, session: ChatSession, message: dict, config: ChatConfig):
+    async def _handle_menu_selection(self, session: dict, message: dict, config: ChatConfig):
         # Extração limpa do payload de resposta
         msg_type = message.get("type")
         content = message.get("content", {})
@@ -359,13 +339,14 @@ class ChatService:
         )
 
         selected_btn = next((b for b in config.greeting_buttons if b.id == selected_option), None)
+        phone = session.get("phone_number")
 
         if not selected_btn:
-            return self.wa_client.send_text(session.phone_number, "Por favor, selecione uma opção válida.")
+            return self.wa_client.send_text(phone, "Por favor, selecione uma opção válida.")
 
         # Roteamento baseado em setor
         if selected_btn.sector in ["Comercial", "Financeiro", "Outros"]:
-            await self._route_sector(session.phone_number, config, selected_btn.sector)
+            await self._route_sector(phone, config, selected_btn.sector)
 
     def _normalize_phone(self, phone: str) -> str:
         """Normaliza telefone para formato padrão (BR com 9 dígitos)"""
@@ -433,6 +414,7 @@ class ChatService:
         attendant_id = str(attendant.get("_id"))
         
         await self.session_repo.assign_attendant(phone, attendant_id, sector_name.lower())
+        await self._invalidate_attendant_cache(attendant_id)
         
         # Mensagem de boas vindas
         welcome_msg = attendant.get("welcome_message")

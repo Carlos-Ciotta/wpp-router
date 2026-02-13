@@ -1,5 +1,4 @@
 from motor.motor_asyncio import AsyncIOMotorCollection
-from domain.contact.contact import Contact
 from datetime import datetime
 from typing import Optional
 from bson import ObjectId
@@ -42,15 +41,15 @@ class ContactRepository:
             upsert=True
         )
 
-    async def get_by_phone(self, phone: str) -> Optional[Contact]:
+    async def get_by_phone(self, phone: str) -> Optional[dict]:
         data = await self._collection.find_one({"_id": phone})
         if data:
-            return Contact(**_serialize_doc(data))
+            return _serialize_doc(data)
         return None
 
-    async def list_contacts(self, limit: int = 50, skip: int = 0) -> list[Contact]:
+    async def list_contacts(self, limit: int = 50, skip: int = 0) -> list[dict]:
         cursor = self._collection.find().sort("last_message_at", -1).skip(skip).limit(limit)
         contacts = []
         async for doc in cursor:
-            contacts.append(Contact(**_serialize_doc(doc)))
+            contacts.append(_serialize_doc(doc))
         return contacts
