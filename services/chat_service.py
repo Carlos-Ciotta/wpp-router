@@ -85,12 +85,11 @@ class ChatService:
             if self._cache.ensure:
                 cached = await self._cache.get(f"sessions:{attendant_id}")
                 if cached:
-                    yield cached
-                return
+                    return cached
             sessions = [s async for s in self.session_repo.get_sessions_by_attendant(attendant_id)]
             
             await self._cache.set(f"sessions:{attendant_id}", sessions)
-            yield sessions
+            return sessions
         
         except ValueError as ve:
             logging.error(f"Erro de validação: {ve}")
@@ -99,7 +98,7 @@ class ChatService:
     async def list_sessions(self):
         """Lista todas as sessões de chat."""
         try:
-            yield [s async for s in self.session_repo.get_all_sessions()]
+            return [s async for s in self.session_repo.get_all_sessions()]
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
 
