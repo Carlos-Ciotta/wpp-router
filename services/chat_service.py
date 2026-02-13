@@ -268,7 +268,7 @@ class ChatService:
 
         # Early returns rápidos para economizar processamento
         if not phone or msg_type == "status_update":
-            return
+            return False
 
         # 1. Atualizar ou Criar Contato
         try:
@@ -420,14 +420,14 @@ class ChatService:
             wh = attendant.get("working_hours")
             if not self._is_working_hour(wh):
                 self._get_next_attendant(sector_name)
-                return
+                return None
         else:
             # 2. Se não tem vínculo, faz rodízio entre disponíveis
             attendant = await self._get_next_attendant(sector_name)
             
             if not attendant:
                 self.wa_client.send_text(phone, config.absence_message)
-                return
+                return None
 
         # 3. Atribuição
         attendant_name = attendant.get("name", "Atendente")
