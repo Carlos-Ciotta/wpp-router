@@ -33,7 +33,7 @@ class SessionRepository:
                 },
                 {"_id": 0}).sort("last_interaction_at", -1)
             
-            yield cursor.to_list()
+            return await cursor.to_list(length=None)
         
         except Exception:
             return None
