@@ -56,14 +56,14 @@ async def login(
 
 @router.post("/logout")
 async def logout(
-    token:dict,
+    token:str = Body(..., embed=True),
     service: AttendantService = Depends(get_attendant_service)
 ):
     await service.logout(token)
 
 @router.post("/verify-token")
 async def verify_token(
-    token:dict,
+    token:str = Body(..., embed=True),
     service: AttendantService = Depends(get_attendant_service)
 ):
     token = await service.verify_token(token)

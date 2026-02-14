@@ -44,12 +44,22 @@ class WhatsAppClient:
                 timeout=30
             )
             response.raise_for_status()
-            
-            payload.pop("messaging_product", None)
-            payload.pop("recipient_type", None)
-            payload['direction'] = 'outbound'
+            res_data = response.json()
+        
+            # 1. Extrai o ID da mensagem gerado pela Meta
+            # A estrutura da resposta é: {"messages": [{"id": "wamid.ID..."}]}
+            wa_message_id = res_data.get("messages", [{}])[0].get("id")
 
-            await self._repo.save_messages_bulk([payload])
+            # 2. Prepara os dados para o banco
+            save_payload = payload.copy()
+            save_payload.pop("messaging_product", None)
+            save_payload.pop("recipient_type", None)
+            save_payload['direction'] = 'outbound'
+            save_payload['message_id'] = wa_message_id  # <--- AGORA TEM ID!
+
+            # 3. Salva no banco com o ID correto
+            if wa_message_id:
+                await self._repo.save_messages_bulk([save_payload])
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
@@ -388,15 +398,7 @@ class WhatsAppClient:
             return PlainTextResponse(content=challenge, status_code=200)
         raise HTTPException(status_code=403, detail="Verification failed")
     
-    # --- PROCESSAMENTO DE WEBHOOK (USANDO DOMAIN) ---
-
-    async def verify_webhook(self, request: Request):
-        """Handshake de verificação do Facebook"""
-        params = request.query_params
-        if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == self._internal_token:
-            return PlainTextResponse(content=params.get("hub.challenge"), status_code=200)
-        raise HTTPException(status_code=403, detail="Verification failed")
-
+    
     async def process_webhook(self, webhook_data: Dict[str, Any]) -> List[Message]:
         """
         Usa o Domain Model para processar o JSON complexo.
