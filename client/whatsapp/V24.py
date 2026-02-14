@@ -47,7 +47,7 @@ class WhatsAppClient:
             payload.pop("recipient_type", None)
             payload['direction'] = 'outbound'
 
-            self._repo.save_messages_bulk(payload)
+            self._repo.save_messages_bulk([payload])
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
