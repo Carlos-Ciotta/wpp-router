@@ -409,7 +409,7 @@ class WhatsAppClient:
             to_save = [e.to_dict() for e in events if e.type != "status_update"]
 
             # 2. Filtra os updates de status
-            to_update = [e for e in events if e.type == "status_update"]
+            to_update = [e.to_dict() for e in events if e.type == "status_update"]
 
             # 3. Executa as operações em lote (Bulk)
             if to_save:

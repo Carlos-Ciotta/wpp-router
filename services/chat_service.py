@@ -40,7 +40,8 @@ class ChatService:
         if cached:
             return ChatConfig(**cached[0])  # Cache armazena lista de dicts
         config = await self._config_repo.get_config()
-        return ChatConfig(**config.dict()) if config else ChatConfig()
+        # O repositório retorna um dict, não um objeto Pydantic
+        return ChatConfig(**config) if config else ChatConfig()
 
     async def _invalidate_attendant_cache(self, attendant_id: str):
         if attendant_id:
