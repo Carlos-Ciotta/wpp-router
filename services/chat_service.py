@@ -229,22 +229,23 @@ class ChatService:
     
     async def process_incoming_message(self, message: Any):
         # Extração de dados compatível com dict ou Objeto Message
-        if hasattr(message, "from_number"): # Objeto Message
+        if hasattr(message, "from_number"): 
             phone = message.from_number
             msg_type = message.type
             profile_name = message.profile_name
+            # Captura o texto para o objeto se ele existir
+            text_body = message.text if hasattr(message, "text") else ""
             timestamp = float(message.timestamp) if message.timestamp else datetime.now(TZ_BR).timestamp()
-            # Precisamos converter para dict para passar para funções internas que esperam dict por enquanto
-            # ou refatorar tudo. Por segurança/rapidez, vamos adaptar o message para dict se necessário nas chamadas internas
             msg_dict = message.to_dict() if hasattr(message, "to_dict") else message.__dict__
-        else: # Dict (legado)
-            phone = message.get("from")
+        else: 
+            phone = message.get("from_number") or message.get("from")
             msg_type = message.get("type")
-            profile_name = message.get("profile", {}).get("name") 
-            timestamp = float(message.get("timestamp", datetime.now(TZ_BR).timestamp()))
-            msg_dict = message
+            profile_name = message.get("profile_name") or message.get("profile", {}).get("name")
+            # No seu log, o texto está na chave 'text' diretamente ou dentro de 'raw_data'
+            text_body = message.get("text") or message.get("raw_data", {}).get("text", {}).get("body", "")
+            timestamp = float(message.get("timestamp") or datetime.now(TZ_BR).timestamp())
+            msg_dict = {**message, "text_body": text_body} # Injeta o texto limpo aqui
 
-        # Early returns rápidos para economizar processamento
         if not phone or msg_type == "status_update":
             return False
 
@@ -312,7 +313,7 @@ class ChatService:
                                 last_client_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 last_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 )
-        await self.session_repo.create_session(new_session)
+        await self.session_repo.create_session(new_session.to_dict())
         await self.set_active_sessions(phone=phone)
         
         # Prepara botões - Garante fallback se config estiver vazia
