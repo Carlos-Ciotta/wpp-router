@@ -39,11 +39,19 @@ class Attendant:
     def is_bcrypt_hash(self, s: str) -> bool:
         return bool(re.match(r'^\$2[aby]\$\d{2}\$.{53}$', s))
     
-    def hash_password(self) -> str:
+    def hash_password(self, password: str) -> str:
         """Hash a password using bcrypt."""
         salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(self.password.encode('utf-8'), salt)
-        object.__setattr__(self, "password",hashed.decode('utf-8'))
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
     
     def to_dict(self):
-        return {k: v for k, v in asdict(self).items() if v is not None and k != "_id" or "password"}
+        data = asdict(self)
+        if self._id:
+            data["_id"] = self._id
+        
+        # Convert Enum to value
+        if isinstance(self.permission, PermissionLevel):
+            data["permission"] = self.permission.value
+            
+        return data
