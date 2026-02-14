@@ -13,16 +13,17 @@ Body:
   "name": "João Silva",
   "login": "joao.silva",
   "password": "senha123",
-  "sector": "Comercial",
+  "permission": "user",
+  "sector": ["Comercial"],
   "clients": [
     "5511999999999"
   ],
   "working_hours": {
-    "0": [{ "start": "09:00", "end": "18:00" }],
-    "1": [{ "start": "09:00", "end": "18:00" }],
-    "2": [{ "start": "09:00", "end": "18:00" }],
-    "3": [{ "start": "09:00", "end": "18:00" }],
-    "4": [{ "start": "09:00", "end": "18:00" }]
+    "0": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "1": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "2": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "3": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "4": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }]
   }
 }
 
@@ -31,7 +32,10 @@ URL: http://localhost:8000/attendants/login
 Method: POST
 Headers: Content-Type: application/x-www-form-urlencoded
 Body:
-username=joao.silva&password=senha123
+username=joao.silva
+password=senha123
+
+retorna token com _id do attendant
 
 1.3 LISTAR ATENDENTES
 URL: http://localhost:8000/attendants/
@@ -70,20 +74,16 @@ Body:
 ### 3. SESSÕES (SESSIONS) - Falando com o BOT/Atendente
 ---------------------------------------------------
 
-3.1 LISTAR TODAS SESSÕES
-URL: http://localhost:8000/sessions/?limit=20&skip=0
+3.1 LISTAR TODAS SESSÕES (Última de cada cliente)
+URL: http://localhost:8000/sessions/
 Method: GET
 
-3.2 SESSÕES DE UM ATENDENTE
+3.2 SESSÕES DE UM ATENDENTE (Usa o _id mongo do attendant)
 URL: http://localhost:8000/sessions/attendant/{ATTENDANT_ID}
-URL Exemplo: http://localhost:8000/sessions/attendant/65c4ec...
+URL Exemplo: http://localhost:8000/sessions/attendant/65c4ec... 
 Method: GET
 
-3.3 SESSÃO ATIVA DE UM CLIENTE (Ultima sessão)
-URL: http://localhost:8000/sessions/phone/5511999999999
-Method: GET
-
-3.4 INICIAR SESSÃO MANUALMENTE
+3.3 INICIAR SESSÃO MANUALMENTE
 URL: http://localhost:8000/sessions/start
 Method: POST
 Body:
@@ -93,7 +93,7 @@ Body:
     "category": "Ativo"
 }
 
-3.5 TRANSFERIR ATENDIMENTO
+3.4 TRANSFERIR ATENDIMENTO
 URL: http://localhost:8000/sessions/transfer
 Method: POST
 Body:
@@ -102,7 +102,7 @@ Body:
     "new_attendant_id": "65c4ec..."
 }
 
-3.6 FINALIZAR SESSÃO
+3.5 FINALIZAR SESSÃO
 URL: http://localhost:8000/sessions/5511999999999/finish
 Method: POST
 
@@ -130,7 +130,28 @@ Body:
     "caption": "Veja esta foto"
 }
 
-4.3 ENVIAR TEMPLATE (Abre Janela 24h)
+4.3 ENVIAR VÍDEO
+URL: http://localhost:8000/messages/video
+Method: POST
+Body:
+{
+    "to": "5511999999999",
+    "video_url": "https://example.com/video.mp4",
+    "caption": "Veja este vídeo"
+}
+
+4.4 ENVIAR DOCUMENTO
+URL: http://localhost:8000/messages/document
+Method: POST
+Body:
+{
+    "to": "5511999999999",
+    "document_url": "https://example.com/documento.pdf",
+    "caption": "Segue orçamento",
+    "filename": "orçamento.pdf"
+}
+
+4.5 ENVIAR TEMPLATE (Abre Janela 24h)
 URL: http://localhost:8000/messages/template
 Method: POST
 Body:

@@ -36,9 +36,9 @@ class Attendant:
         """Verify if the provided password matches the stored hashed password."""
         return bcrypt.checkpw(password.encode('utf-8'), self.password.encode('utf-8'))
 
-    def is_bcrypt_hash(s: str) -> bool:
+    def is_bcrypt_hash(self, s: str) -> bool:
         return bool(re.match(r'^\$2[aby]\$\d{2}\$.{53}$', s))
-
+    
     def hash_password(self) -> str:
         """Hash a password using bcrypt."""
         salt = bcrypt.gensalt()

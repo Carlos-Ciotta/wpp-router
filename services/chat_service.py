@@ -144,6 +144,13 @@ class ChatService:
         await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
+    async def send_template_message(self, phone: str, template_name: str, language_code: str = "pt_BR", components: list = None):
+        """Envia mensagem de template (HSM)."""
+        response = await self.wa_client.send_template(phone, template_name, language_code, components)
+        # Templates podem ser enviados fora da janela de 24h, então atualizamos a interação
+        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        return response
+
     # ------------------------
     # Chat Managment
     # ------------------------

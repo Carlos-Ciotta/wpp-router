@@ -1,6 +1,5 @@
 """Rotas para webhooks e envio de mensagens."""
 from fastapi import APIRouter, Request, HTTPException, Depends, Body
-from typing import Optional, Dict, Any, List
 
 from client.whatsapp.V24 import WhatsAppClient
 from core.dependencies import get_clients, get_chat_service

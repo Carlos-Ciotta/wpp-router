@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from domain.attendants.attendant import Attendant
 from services.attendant_service import AttendantService
-from services.chat_service import ChatService
 from core.dependencies import get_attendant_service, get_chat_service
 from typing import List, Optional, Dict
 from pydantic import BaseModel

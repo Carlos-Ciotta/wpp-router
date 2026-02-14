@@ -43,7 +43,8 @@ async def get_attendant_repository():
 
 async def get_attendant_service():
     repo = await get_attendant_repository()
-    return AttendantService(repo)
+    cache = await get_cache()
+    return AttendantService(repo, cache)
 
 async def get_config_repository():
     collection = await get_db_collection("configs")
