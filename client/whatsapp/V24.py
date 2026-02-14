@@ -32,9 +32,11 @@ class WhatsAppClient:
         }
     
 
-    def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Envia request para a API"""
         try:
+            # Note: requests is synchronous and will block the event loop.
+            # Ideally use httpx.AsyncClient or run_in_executor.
             response = requests.post(
                 f"{self.base_url}/{self.phone_id}/messages", # URL base costuma precisar do phone_id
                 headers=self.headers,
@@ -47,7 +49,7 @@ class WhatsAppClient:
             payload.pop("recipient_type", None)
             payload['direction'] = 'outbound'
 
-            self._repo.save_messages_bulk([payload])
+            await self._repo.save_messages_bulk([payload])
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
@@ -88,7 +90,7 @@ class WhatsAppClient:
             print(f"❌ Erro ao buscar templates: {e.response.text if e.response else e}")
             raise
 
-    def send_template(
+    async def send_template(
         self,
         to: str,
         template_name: str,
@@ -125,9 +127,9 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando template '{template_name}' para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
 
-    def send_text(self, to: str, text: str, preview_url: bool = False) -> Dict[str, Any]:
+    async def send_text(self, to: str, text: str, preview_url: bool = False) -> Dict[str, Any]:
         # A normalização agora pode ser feita via Message ou mantida aqui por segurança
         payload = {
             "messaging_product": "whatsapp",
@@ -136,9 +138,9 @@ class WhatsAppClient:
             "type": "text",
             "text": {"preview_url": preview_url, "body": text}
         }
-        return self._send_request(payload)
+        return await self._send_request(payload)
     
-    def send_image(
+    async def send_image(
         self, 
         to: str, 
         image_url: str = None, 
@@ -178,9 +180,9 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando imagem para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
     
-    def send_video(
+    async def send_video(
         self,
         to: str,
         video_url: str = None,
@@ -218,9 +220,9 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando vídeo para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
     
-    def send_audio(
+    async def send_audio(
         self,
         to: str,
         audio_url: str = None,
@@ -253,9 +255,9 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando áudio para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
     
-    def send_document(
+    async def send_document(
         self,
         to: str,
         document_url: str = None,
@@ -297,9 +299,9 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando documento para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
     
-    def send_buttons(
+    async def send_buttons(
         self,
         to: str,
         body_text: str,
@@ -369,10 +371,11 @@ class WhatsAppClient:
         }
         
         print(f"📤 Enviando botões para {to}")
-        return self._send_request(payload)
+        return await self._send_request(payload)
  # ===== RECEBIMENTO DE MENSAGENS =====
     
     async def verify_webhook(self, request:Request):
+
         """Webhook verification handshake.
 
         Must echo back hub.challenge when hub.verify_token matches configured token.
@@ -436,14 +439,14 @@ class WhatsAppClient:
         except Exception:
             return None
 
-    def mark_as_read(self, message_id: str) -> Dict[str, Any]:
+    async def mark_as_read(self, message_id: str) -> Dict[str, Any]:
         """Informa ao WhatsApp que a mensagem foi lida"""
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
             "message_id": message_id
         }
-        return self._send_request(payload)
+        return await self._send_request(payload)
 
     def download_media(self, media_url: str) -> Optional[bytes]:
         """

@@ -57,6 +57,7 @@ class ChatService:
     async def sync_templates_from_whatsapp(self):
         """Busca templates do WhatsApp e salva no repositório local."""
         try:
+            # get_templates currently is sync and returns data, it doesn't do async storage itself
             raw_templates = self.wa_client.get_templates(status="APPROVED")
             templates = [{
                 "id": t.get("id"),
@@ -112,7 +113,7 @@ class ChatService:
         if not await self.can_send_free_message(phone):
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
         
-        response = self.wa_client.send_text(phone, text)
+        response = await self.wa_client.send_text(phone, text)
         await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
@@ -121,7 +122,7 @@ class ChatService:
         if not await self.can_send_free_message(phone):
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
-        response = self.wa_client.send_image(phone, image_url, caption=caption)
+        response = await self.wa_client.send_image(phone, image_url, caption=caption)
         await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
@@ -130,7 +131,7 @@ class ChatService:
         if not await self.can_send_free_message(phone):
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
-        response = self.wa_client.send_video(phone, video_url, caption=caption)
+        response = await self.wa_client.send_video(phone, video_url, caption=caption)
         await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
@@ -139,7 +140,7 @@ class ChatService:
         if not await self.can_send_free_message(phone):
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
-        response = self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
+        response = await self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
         await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
@@ -330,7 +331,7 @@ class ChatService:
         buttons = [{"id": b.id, "title": b.title} for b in config.greeting_buttons] or \
                   [{"id": "atendimento", "title": "Atendimento"}]
 
-        self.wa_client.send_buttons(
+        await self.wa_client.send_buttons(
             to=phone,
             body_text=config.greeting_message,
             buttons=buttons[:3], # O WhatsApp Cloud API suporta no máximo 3 botões nesta função
@@ -358,7 +359,7 @@ class ChatService:
 
         if not selected_btn:
             if selected_option: # If they selected something but it didn't match
-                return self.wa_client.send_text(phone, "Opção inválida ou expirada.")
+                return await self.wa_client.send_text(phone, "Opção inválida ou expirada.")
             return # If no option selected (e.g. text message), do nothing or generic handler
 
         # Roteamento baseado em setor
@@ -423,7 +424,7 @@ class ChatService:
             attendant = await self._get_next_attendant(sector_name)
             
             if not attendant:
-                self.wa_client.send_text(phone, config.absence_message)
+                await self.wa_client.send_text(phone, config.absence_message)
                 return None
 
         # 3. Atribuição
@@ -438,4 +439,4 @@ class ChatService:
         if not welcome_msg:
             welcome_msg = config.attendant_assigned_message.format(attendant_name=attendant_name)
             
-        self.wa_client.send_text(phone, welcome_msg)
+        await self.wa_client.send_text(phone, welcome_msg)
