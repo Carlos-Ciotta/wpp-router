@@ -223,7 +223,11 @@ class ChatService:
         if not session:
             return False # Nunca houve contato
 
-        if int(session.get("last_client_interaction_at")) < datetime.now(TZ_BR).timestamp() - 24*3600:
+        last_interaction = session.get("last_client_interaction_at")
+        if not last_interaction:
+            return False
+
+        if int(last_interaction) < datetime.now(TZ_BR).timestamp() - 24*3600:
             return False
         
         return True
@@ -270,10 +274,15 @@ class ChatService:
         # Gerenciamento de Estado usando Match (Python 3.10+)
         status = session.get("status")
         match status:
-            case SessionStatus.WAITING_MENU:
+            case SessionStatus.WAITING_MENU.value: # Add .value
                 await self._handle_menu_selection(session, msg_dict, config)
-            case SessionStatus.ACTIVE:
+            case SessionStatus.ACTIVE.value: # Add .value
                 await self.session_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
+            case _: # Handle string fallback if enum lookup fails
+                if status == "waiting_menu":
+                    await self._handle_menu_selection(session, msg_dict, config)
+                elif status == "active":
+                    await self.session_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
     
     # -----------------------
     # Helpers
@@ -315,7 +324,7 @@ class ChatService:
                                 last_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 )
         await self.session_repo.create_session(new_session.to_dict())
-        await self.set_active_sessions(phone=phone)
+        # Removed set_active_sessions which was undefined
         
         # Prepara botões - Garante fallback se config estiver vazia
         buttons = [{"id": b.id, "title": b.title} for b in config.greeting_buttons] or \
@@ -331,19 +340,26 @@ class ChatService:
     async def _handle_menu_selection(self, session: dict, message: dict, config: ChatConfig):
         # Extração limpa do payload de resposta
         msg_type = message.get("type")
-        content = message.get("content", {})
+        raw_data = message.get("raw_data", {})
         
-        selected_option = (
-            content.get("id") if msg_type == "interactive" 
-            else content.get("payload") if msg_type == "button" 
-            else None
-        )
+        selected_option = None
+        
+        if msg_type == "interactive":
+           interactive = raw_data.get("interactive", {})
+           if interactive.get("type") == "button_reply":
+               selected_option = interactive.get("button_reply", {}).get("id")
+           elif interactive.get("type") == "list_reply":
+               selected_option = interactive.get("list_reply", {}).get("id")
+        elif msg_type == "button":
+            selected_option = raw_data.get("button", {}).get("payload")
 
         selected_btn = next((b for b in config.greeting_buttons if b.id == selected_option), None)
         phone = session.get("phone_number")
 
         if not selected_btn:
-            return self.wa_client.send_text(phone, "Por favor, selecione uma opção válida.")
+            if selected_option: # If they selected something but it didn't match
+                return self.wa_client.send_text(phone, "Opção inválida ou expirada.")
+            return # If no option selected (e.g. text message), do nothing or generic handler
 
         # Roteamento baseado em setor
         if selected_btn.sector in ["Comercial", "Financeiro", "Outros"]:
