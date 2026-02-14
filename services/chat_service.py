@@ -83,26 +83,38 @@ class ChatService:
     async def get_sessions_by_attendant(self, attendant_id: str):
         try:
             await self._validate_objectid(attendant_id)
-            
             if self._cache.ensure:
                 cached = await self._cache.get(f"sessions:{attendant_id}")
                 if cached:
                     return cached
-            sessions = [s async for s in self.session_repo.get_sessions_by_attendant(attendant_id)]
-            
+            sessions = []
+            async for s in self.session_repo.get_sessions_by_attendant(attendant_id):
+                if hasattr(s, 'to_dict'):
+                    sessions.append(s.to_dict())
+                else:
+                    sessions.append(s)
             await self._cache.set(f"sessions:{attendant_id}", sessions)
             return sessions
-        
         except ValueError as ve:
             logging.error(f"Erro de validação: {ve}")
-            return None
-    
+            return []
+        except Exception as e:
+            logging.error(f"Erro ao buscar sessões por atendente: {e}")
+            return []
+
     async def list_sessions(self):
         """Lista todas as sessões de chat."""
         try:
-            return [s async for s in self.session_repo.get_all_sessions()]
+            sessions = []
+            async for s in self.session_repo.get_all_sessions():
+                if hasattr(s, 'to_dict'):
+                    sessions.append(s.to_dict())
+                else:
+                    sessions.append(s)
+            return sessions
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
+            return []
 
     # ------------------------
     # Sending Messages

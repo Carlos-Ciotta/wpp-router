@@ -47,7 +47,11 @@ class Attendant:
     
     def to_dict(self):
         data = asdict(self)
-        if self._id:
+        
+        # Remove _id if None to allow MongoDB to generate it
+        if data.get("_id") is None:
+            if "_id" in data: del data["_id"]
+        else:
             data["_id"] = self._id
         
         # Convert Enum to value

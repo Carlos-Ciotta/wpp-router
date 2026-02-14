@@ -87,4 +87,4 @@ async def list_attendants(
     for att in attendants:
         if "_id" in att:
             att["_id"] = str(att["_id"])
-    yield attendants
+    return attendants

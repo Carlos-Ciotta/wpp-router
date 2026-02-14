@@ -22,14 +22,18 @@ class Cache:
             self._log.error(f"[CacheService] Redis connection error: {err}")
             return False
     
-    async def get(self, key: str) -> List[Dict[str, Any]] | None:
+    async def get(self, key: str) -> List[Dict[str, Any]] | Dict[str, Any] | None:
         async with self._lock:
             raw = await self._client.get(key)
             return json.loads(raw) if raw else None
 
-    async def set(self, key: str, value: List[Dict[str, Any]]) -> None:
-        if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
-            raise TypeError("Cache.set espera uma lista de dict")
+    async def set(self, key: str, value: List[Dict[str, Any]] | Dict[str, Any]) -> None:
+        # Validate if it is a List of Dicts OR a single Dict
+        is_list_of_dicts = isinstance(value, list) and all(isinstance(v, dict) for v in value)
+        is_single_dict = isinstance(value, dict)
+
+        if not (is_list_of_dicts or is_single_dict):
+            raise TypeError("Cache.set espera uma lista de dict ou um único dict")
 
         async with self._lock:
             await self._client.set(key, json.dumps(value))
@@ -44,11 +48,14 @@ class Cache:
             if keys:
                 await self._client.delete(*keys)
 
-    async def refresh(self, key: str, fetcher) -> List[Dict[str, Any]]:
+    async def refresh(self, key: str, fetcher) -> List[Dict[str, Any]] | Dict[str, Any]:
         value = await fetcher()
 
-        if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
-            raise TypeError("Cache.refresh espera uma lista de dict")
+        is_list_of_dicts = isinstance(value, list) and all(isinstance(v, dict) for v in value)
+        is_single_dict = isinstance(value, dict)
+
+        if not (is_list_of_dicts or is_single_dict):
+            raise TypeError("Cache.refresh fetcher deve retornar uma lista de dict ou um único dict")
 
         async with self._lock:
             await self._client.set(key, json.dumps(value))
