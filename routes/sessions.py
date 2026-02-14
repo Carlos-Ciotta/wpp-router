@@ -87,7 +87,7 @@ async def get_sessions_by_attendant(
     Retorna a última sessão de cada cliente atendido por um atendente específico.
     """
     try:
-        cursor = chat_service.get_sessions_by_attendant(attendant_id)
+        cursor = await chat_service.get_sessions_by_attendant(attendant_id)
         sessions = []
         async for doc in cursor:
             # O repositório pode retornar dict ou ChatSession. Garantimos a conversão.
@@ -111,12 +111,7 @@ async def get_all_sessions(
     Retorna a última sessão de cada cliente do sistema.
     """
     try:
-        cursor = chat_service.list_sessions()
-        sessions = []
-        async for doc in cursor:
-             session_data = doc.to_dict() if hasattr(doc, "to_dict") else doc
-             sessions.append(SessionResponse(**session_data))
-        return sessions
+        return await chat_service.list_sessions()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

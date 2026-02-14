@@ -89,13 +89,13 @@ class AttendantService():
             expires_delta=access_token_expires
         )
         token = {"access_token": access_token, "token_type": "bearer"}
-        self._cache.set("auth_token:", token)
+        await self._cache.set("auth_token:", token)
 
         return token
     
     async def verify_token(self, token:str):
         try:
-            token = self._cache.get(f"auth_token:{token}")
+            token = await self._cache.get(f"auth_token:{token}")
             if token:
                 return True
             else:
@@ -106,7 +106,7 @@ class AttendantService():
     
     async def logout(self, token:dict):
         try:
-            self._cache.delete(f"auth_token:{token}")
+            await self._cache.delete(f"auth_token:{token}")
             return
         except Exception as e:
             raise ("Error during logout: ", e)
