@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Body, WebSocket, Query
 from typing import Optional, List, Dict, Any
 import json
 from core.dependencies import get_chat_service
 from services.chat_service import ChatService
 from utils.auth import PermissionChecker # Importe seu ConnectionManager global
 from core.websocket import manager
+from handlers.ws.messages import HANDLERS
+
 # Instâncias de permissão
 admin_permission = PermissionChecker(allowed_permissions=["admin"])
 user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
@@ -14,112 +16,50 @@ router = APIRouter(prefix="/messages", tags=["Messages"])
 @router.websocket("/ws")
 async def chat_endpoint(
     websocket: WebSocket,
-    auth_data: dict = Depends(user_permission)
+    token: str = Depends(user_permission),
+    attendant_id: str = Query(..., description="ID do atendente")
 ):
     await websocket.accept()
-    user_id = auth_data.get("_id")
     # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
     chat_service = await get_chat_service() 
     
-    await manager.connect(user_id, websocket)
+    await manager.connect(attendant_id, websocket)
     
-    try:
-        while True:
-            # Recebe a mensagem do Front-end (JSON)
-            raw_data = await websocket.receive_text()
-            data = json.loads(raw_data)
-            
-            action = data.get("action") # ex: "send_text", "send_image"
-            payload = data.get("payload", {})
-            
-            try:
-                # --- DISPATCHER DE COMANDOS ---
-                match action:
-                    case "send_text":
-                        result = await chat_service.send_text_message(
-                        to=payload.get("to"), 
-                        text=payload.get("text")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
+    while True:
+        raw_data = await websocket.receive_text()
+        data = json.loads(raw_data)
 
-                    case "send_video":
-                        result = await chat_service.send_video_message(
-                        to=payload.get("to"),
-                        video_url=payload.get("video_url"),
-                        caption=payload.get("caption")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
-                    case "send_document":
-                        result = await chat_service.send_document_message(
-                        to=payload.get("to"),
-                        document_url=payload.get("document_url"),
-                        caption=payload.get("caption"),
-                        filename=payload.get("filename")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
-                    
-                    case "send_audio":
-                        result = await chat_service.send_audio_message(
-                        to=payload.get("to"),
-                        audio_url=payload.get("audio_url"),
-                        caption=payload.get("caption")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
-                    
-                    case "send_image":
-                        result = await chat_service.send_image_message(
-                        to=payload.get("to"), 
-                        image_url=payload.get("image_url"), 
-                        caption=payload.get("caption")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
+        action = data.get("action")
+        payload = data.get("payload", {})
 
-                    case "send_interactive":
-                        result = await chat_service.send_interactive_message(
-                        to=payload.get("to"),
-                        header=payload.get("header"),
-                        body=payload.get("body"),
-                        footer=payload.get("footer"),
-                        buttons=payload.get("buttons")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
-                    
-                    case "send_list":
-                        result = await chat_service.send_list_message(
-                        to=payload.get("to"),
-                        header=payload.get("header"),
-                        body=payload.get("body"),
-                        footer=payload.get("footer"),
-                        button_text=payload.get("button_text"),
-                        sections=payload.get("sections")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
-                    
-                    case "send_template":
-                        result = await chat_service.send_template_message(
-                        to=payload.get("to"),
-                        template_name=payload.get("template_name"),
-                        language_code=payload.get("language_code", "pt_BR"),
-                        components=payload.get("components")
-                        )
-                        await manager.send_personal_message({"type": "success", "action": action}, user_id)
+        handler = HANDLERS.get(action)
 
-                    case "get_messages":
-                        result = await chat_service.get_messages_by_phone(
-                        phone=payload.get("phone"),
-                        limit=payload.get("limit", 50),
-                        skip=payload.get("skip", 0))
-                        await manager.send_personal_message({
-                            "type": "success",
-                            "action": action,
-                            "data": result
-                        }, user_id)
-            except Exception as e:
-                await manager.send_personal_message({
-                    "type": "error", 
-                    "action": action, 
-                    "message": str(e)
-                }, user_id)
+        if not handler:
+            await manager.send_personal_message({
+                "type": "error",
+                "message": f"Ação inválida: {action}"
+            }, attendant_id)
+            continue
 
-    except Exception:
-        manager.disconnect(user_id)
+        try:
+            result = await handler(chat_service, payload)
+
+            response = {
+                "type": "success",
+                "action": action
+            }
+
+            if action == "get_messages":
+                response["data"] = result
+
+            await manager.send_personal_message(response, attendant_id)
+
+        except Exception as e:
+            await manager.send_personal_message({
+                "type": "error",
+                "action": action,
+                "message": str(e)
+            }, attendant_id)
+
+            manager.disconnect(attendant_id)
+            break

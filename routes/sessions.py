@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from core.websocket import manager
 from datetime import datetime
 from utils.auth import PermissionChecker
+import json
 
 admin_permission = PermissionChecker(allowed_permissions=["admin"])
 user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
@@ -104,7 +105,7 @@ async def get_all_sessions(
  # Websocket routes
  # --------------
 
-@router.websocket("/ws/attendant/{attendant_id}", response_model=List[SessionResponse])
+@router.websocket("/ws/attendant/{attendant_id}")
 async def get_sessions_by_attendant(
     websocket: WebSocket,
     attendant_id: str = Query(..., description="ID do atendente"),
@@ -114,19 +115,35 @@ async def get_sessions_by_attendant(
     """
     Retorna a última sessão de cada cliente atendido por um atendente específico.
     """
-    try:
-        cursor = await chat_service.get_sessions_by_attendant(attendant_id)
-        sessions = []
-        async for doc in cursor:
-            # O repositório pode retornar dict ou ChatSession. Garantimos a conversão.
-            if isinstance(doc, dict):
-                sessions.append(SessionResponse(**doc))
-            elif isinstance(doc, ChatSession):
-                sessions.append(SessionResponse(**doc.to_dict()))
-            else:
-                 # Caso venha do motor cursor diretamente como dict
-                 sessions.append(SessionResponse(**doc))
-                 
-        return sessions
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await websocket.accept()
+    # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
+    
+    await manager.connect(attendant_id, websocket)
+
+    while True:
+        raw_data = await websocket.receive_text()
+        data = json.loads(raw_data)
+        
+        action = data.get("action") # ex: "get_sessions", "update_session"
+        payload = data.get("payload", {})
+
+        try:
+            result = await chat_service.get_sessions_by_attendant(attendant_id)
+
+            response = {
+                "type": "success",
+                "action": action,
+                "data": result
+            }
+
+            await manager.send_personal_message(response, attendant_id)
+
+        except Exception as e:
+            await manager.send_personal_message({
+                "type": "error",
+                "action": action,
+                "message": str(e)
+            }, attendant_id)
+
+            manager.disconnect(attendant_id)
+            break

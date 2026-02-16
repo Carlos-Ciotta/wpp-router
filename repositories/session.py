@@ -65,7 +65,7 @@ class SessionRepository:
         async for doc in cursor:
             yield _serialize_doc(doc)
 
-    async def get_all_sessions(self,limit: int = 100, skip : int = 0):
+    async def get_all_sessions(self,limit: int = 300, skip : int = 0):
         """Busca todas as sessões, opcionalmente filtradas por status."""
         
         cursor = self._collection.find().sort("last_interaction_at", -1).limit(limit).skip(skip)
