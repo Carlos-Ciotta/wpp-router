@@ -22,7 +22,7 @@ class Cache:
     # --------------------
     # STRING
     # --------------------
-    async def get_safe(self, key: str):
+    async def get(self, key: str):
         key_type = await self._client.type(key)  # retorna 'string', 'hash', 'set', etc.
         match key_type:
             case "string":
