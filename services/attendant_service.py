@@ -37,8 +37,10 @@ class AttendantService():
         try:
             cached_users = await self.get_users_cached()
             if cached_users:
-                for u in cached_users:
-                    if u.get("login") == login:
+                # cached_users may be a list of dicts or a dict mapping ids->dicts.
+                users_iter = cached_users.values() if isinstance(cached_users, dict) else cached_users
+                for u in users_iter:
+                    if isinstance(u, dict) and u.get("login") == login:
                         return u
             
             return await self._repository.find_by_login(login)
