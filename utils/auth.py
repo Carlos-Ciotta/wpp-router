@@ -1,4 +1,5 @@
-import jwt
+from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
 import logging
 from fastapi import HTTPException, status, Depends, Request, WebSocket
 from typing import List
@@ -101,9 +102,9 @@ class PermissionChecker:
             logger.debug("Permissão concedida para user_id=%s", user_id)
             return payload 
 
-        except jwt.ExpiredSignatureError as e:
+        except ExpiredSignatureError as e:
             logger.warning("Token expirado: %s", str(e))
             raise HTTPException(status_code=401, detail="Token expirado")
-        except jwt.PyJWTError as e:
+        except JWTError as e:
             logger.exception("Erro ao validar/decodificar token: %s", str(e))
             raise HTTPException(status_code=401, detail="Token inválido")
