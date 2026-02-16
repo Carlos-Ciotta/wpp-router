@@ -1,7 +1,7 @@
 import jwt
 import logging
 from fastapi import HTTPException, status, Depends, Request, WebSocket
-from typing import List, Optional
+from typing import List
 from core.environment import get_environment
 from core.dependencies import get_attendant_service # Injeção do seu serviço que tem o verify_token
 
@@ -18,9 +18,9 @@ class PermissionChecker:
 
     async def __call__(
         self,
-        request: Optional[Request] = None,
-        websocket: Optional[WebSocket] = None,
-        service = Depends(get_attendant_service) # Injeta o service para checar o cache
+        request: Request = None,
+        websocket: WebSocket = None,
+        service = Depends(get_attendant_service)  # Injeta o service para checar o cache
     ):
         logger.debug("Iniciando checagem de permissão; allowed_permissions=%s", self.allowed_permissions)
 
