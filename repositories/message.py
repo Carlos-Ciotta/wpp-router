@@ -31,3 +31,7 @@ class MessageRepository():
             
         result = await self._collection.bulk_write(operations, ordered=False)
         return result.modified_count
+    
+    async def get_messages_by_phone_number(self, phone_number: str, limit:int, skip:int) -> List[dict]:
+        cursor = self._collection.find({"phone_number": phone_number}).sort("timestamp", -1).skip(skip).limit(limit)
+        return await cursor.to_list()

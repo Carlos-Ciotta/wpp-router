@@ -79,4 +79,12 @@ async def get_chat_service():
     config_repo = await get_config_repository()
     template_repo = await get_template_repository()
     contact_repo = await get_contact_repository()
-    return ChatService(wa_client, session_repo, attendant_repo, config_repo, template_repo, contact_repo, cache=await get_cache())
+    message_repo = await get_message_repository()
+    return ChatService(wa_client, 
+                       session_repo, 
+                       attendant_repo, 
+                       config_repo, 
+                       template_repo, 
+                       contact_repo,
+                       message_repo=message_repo, 
+                       cache=await get_cache())

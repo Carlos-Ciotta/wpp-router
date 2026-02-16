@@ -6,6 +6,10 @@ from services.chat_service import ChatService
 from domain.session.chat_session import ChatSession, SessionStatus
 from pydantic import BaseModel, Field
 from datetime import datetime
+from utils.auth import PermissionChecker
+
+admin_permission = PermissionChecker(allowed_roles=["admin"])
+user_permission = PermissionChecker(allowed_roles=["user", "admin"])
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -35,6 +39,7 @@ class TransferSessionRequest(BaseModel):
 @router.post("/start", response_model=SessionResponse, status_code=201)
 async def start_session(
     request: StartSessionRequest,
+    token: str = Depends(user_permission),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -50,7 +55,9 @@ async def start_session(
 
 @router.post("/transfer")
 async def transfer_session(
+    
     request: TransferSessionRequest,
+    token: str = Depends(user_permission),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -67,6 +74,7 @@ async def transfer_session(
 @router.post("/{phone_number}/finish")
 async def finish_session(
     phone_number: str,
+    token: str = Depends(user_permission),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -81,6 +89,7 @@ async def finish_session(
 @router.get("/attendant/{attendant_id}", response_model=List[SessionResponse])
 async def get_sessions_by_attendant(
     attendant_id: str,
+    token: str = Depends(user_permission),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -105,7 +114,8 @@ async def get_sessions_by_attendant(
 
 @router.get("/", response_model=List[SessionResponse])
 async def get_all_sessions(
-    chat_service: ChatService = Depends(get_chat_service)
+    chat_service: ChatService = Depends(get_chat_service),
+    token: str = Depends(user_permission),
 ):
     """
     Retorna a última sessão de cada cliente do sistema.

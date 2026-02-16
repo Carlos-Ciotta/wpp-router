@@ -3,6 +3,11 @@ from typing import List
 from domain.contact.contact import Contact
 from repositories.contact import ContactRepository
 from core.dependencies import get_contact_repository
+from utils.auth import PermissionChecker
+
+admin_permission = PermissionChecker(allowed_roles=["admin"])
+user_permission = PermissionChecker(allowed_roles=["user", "admin"])
+
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
@@ -10,6 +15,7 @@ router = APIRouter(prefix="/contacts", tags=["Contacts"])
 async def list_contacts(
     limit: int = Query(50, le=100, description="Limite de contatos"),
     skip: int = 0,
+    token: str = Depends(user_permission), # Both users and admins can list contacts
     repo: ContactRepository = Depends(get_contact_repository)
 ):
     """
@@ -23,6 +29,7 @@ async def list_contacts(
 @router.get("/{phone}", response_model=Contact)
 async def get_contact(
     phone: str,
+    token: str = Depends(user_permission), # Both users and admins can list contacts
     repo: ContactRepository = Depends(get_contact_repository)
 ):
     """

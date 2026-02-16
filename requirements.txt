@@ -11,3 +11,4 @@ python-jose[cryptography]==3.3.0
 python-multipart
 bcrypt==4.0.1
 redis==7.1.1
+jwt

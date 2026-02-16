@@ -5,7 +5,8 @@ class EnvironmentSettings(BaseSettings):
     # MongoDB
     DATABASE_URI: str
     DATABASE_NAME: str
-
+    SECRET_KEY: str
+    ALGORITHM: str
     # Credenciais (definir no .env)
     WHATSAPP_PHONE_ID: str
     WHATSAPP_BUSINESS_ACCOUNT_ID: str

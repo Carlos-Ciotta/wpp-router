@@ -9,6 +9,7 @@ from repositories.contact import ContactRepository
 from client.whatsapp.V24 import WhatsAppClient
 from domain.config.chat_config import ChatConfig
 from domain.template.template import Template
+from repositories.message import MessageRepository
 
 from bson import ObjectId
 from datetime import datetime
@@ -20,7 +21,14 @@ from utils.cache import Cache
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
 class ChatService:
-    def __init__(self, wa_client, session_repo, attendant_repo, config_repo, template_repo, contact_repo, cache, session_cache_key="session_cache"):
+    def __init__(self, wa_client, 
+                 session_repo, 
+                 attendant_repo, 
+                 config_repo, 
+                 template_repo, 
+                 contact_repo, 
+                 cache,message_repo,
+                  session_cache_key="session_cache",):
         self.wa_client : WhatsAppClient = wa_client
         self.session_repo : SessionRepository= session_repo
         self._config_repo : ConfigRepository = config_repo
@@ -28,6 +36,7 @@ class ChatService:
         self._template_repo : TemplateRepository = template_repo
         self._contact_repo : ContactRepository = contact_repo
         self._cache : Cache = cache
+        self._message_repo : MessageRepository = message_repo
         self._cache_key = session_cache_key
 
     # ------------------------
@@ -102,6 +111,13 @@ class ChatService:
             logging.error(f"Erro ao buscar sessões por atendente: {e}")
             return []
 
+    async def get_messages_by_phone(self, phone: str, limit: int = 50, skip: int = 0):
+        """Busca mensagens de uma sessão específica."""
+        try:
+            return [m async for m in self._message_repo.get_messages_by_phone_number(phone, limit, skip)]
+        except Exception as e:
+            logging.error(f"Erro ao buscar mensagens para {phone}: {e}")
+            return []
     async def list_sessions(self):
         """Lista todas as sessões de chat."""
         try:

@@ -4,10 +4,13 @@ from services.attendant_service import AttendantService
 from core.dependencies import get_attendant_service, get_chat_service
 from typing import List, Optional, Dict
 from pydantic import BaseModel
+from utils.auth import PermissionChecker
+
+admin_permission = PermissionChecker(allowed_roles=["admin"])
+user_permission = PermissionChecker(allowed_roles=["user", "admin"])
 
 router = APIRouter(prefix="/attendants", tags=["Attendants"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="attendants/login")
-
 # --- Schemas ---
 class WorkIntervalSchema(BaseModel):
     start: str
@@ -26,6 +29,7 @@ class AttendantCreate(BaseModel):
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_attendant(
     attendant: AttendantCreate, 
+    token: str = Depends(admin_permission), # Only admins can create attendants
     service: AttendantService = Depends(get_attendant_service)
 ):
     """
@@ -56,14 +60,14 @@ async def login(
 
 @router.post("/logout")
 async def logout(
-    token:str = Body(..., embed=True),
+    token: str = Depends(oauth2_scheme),
     service: AttendantService = Depends(get_attendant_service)
 ):
     await service.logout(token)
 
 @router.post("/verify-token")
 async def verify_token(
-    token:str = Body(..., embed=True),
+    token: str = Depends(oauth2_scheme),
     service: AttendantService = Depends(get_attendant_service)
 ):
     token = await service.verify_token(token)
@@ -76,7 +80,8 @@ async def verify_token(
     
 @router.get("/", response_model=List[dict])
 async def list_attendants(
-    service: AttendantService = Depends(get_attendant_service)
+    service: AttendantService = Depends(get_attendant_service),
+    token: str = Depends(admin_permission),
     # Could add token dependency here to secure listing
 ):
     """

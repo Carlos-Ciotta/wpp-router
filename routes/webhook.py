@@ -4,6 +4,10 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Body
 from client.whatsapp.V24 import WhatsAppClient
 from core.dependencies import get_clients, get_chat_service
 from services.chat_service import ChatService
+from utils.auth import PermissionChecker
+
+admin_permission = PermissionChecker(allowed_roles=["admin"])
+user_permission = PermissionChecker(allowed_roles=["user", "admin"])
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 
@@ -15,7 +19,9 @@ async def get_whatsapp_client() -> WhatsAppClient:
 # ===== TEMPLATES =====
 
 @router.get("/templates")
-async def list_templates(chat_service: ChatService = Depends(get_chat_service)):
+async def list_templates(
+    chat_service: ChatService = Depends(get_chat_service),
+    token: str = Depends(user_permission),):
     """Lista templates do repositório local."""
     try:
         return await chat_service.list_templates()
@@ -23,7 +29,8 @@ async def list_templates(chat_service: ChatService = Depends(get_chat_service)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/templates/sync")
-async def sync_templates(chat_service: ChatService = Depends(get_chat_service)):
+async def sync_templates(chat_service: ChatService = Depends(get_chat_service),
+                         token: str = Depends(user_permission),):
     """Força sincronização de templates do WhatsApp para o repositório local."""
     try:
         templates = await chat_service.sync_templates_from_whatsapp()
