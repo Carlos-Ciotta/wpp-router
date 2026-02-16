@@ -22,8 +22,17 @@ class Cache:
     # --------------------
     # STRING
     # --------------------
-    async def get(self, key: str):
-        return await self._client.get(key)
+    async def get_safe(self, key: str):
+        key_type = await self._client.type(key)  # retorna 'string', 'hash', 'set', etc.
+        match key_type:
+            case "string":
+                return await self._client.get(key)
+            case "hash":
+                return await self._client.hgetall(key)
+            case "set":
+                return await list(self._client.smembers(key))
+            case "none":
+                return None
 
     async def set(self, key: str, value: str):
         async with self._lock:
