@@ -22,10 +22,9 @@ class Cache:
             self._log.error(f"[CacheService] Redis connection error: {err}")
             return False
     
-    async def get(self, key: str) -> List[Dict[str, Any]] | Dict[str, Any] | None:
-        async with self._lock:
-            raw = await self._client.get(key)
-            return json.loads(raw) if raw else None
+    async def get(self, key: str) -> str | None:
+        raw = await self._client.get(key)
+        return raw.decode() if raw else None
 
     async def set(self, key: str, value: List[Dict[str, Any]] | Dict[str, Any]) -> None:
         # Validate if it is a List of Dicts OR a single Dict
