@@ -97,8 +97,8 @@ class AttendantService():
     
     async def verify_token(self, token:str):
         try:
-            token = await self._cache.get(f"auth_token:{token}")
-            if token:
+            cached = await self._cache.get(f"auth_token:{token}")
+            if cached:
                 return True
             else:
                 return False
