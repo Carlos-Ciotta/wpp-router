@@ -105,19 +105,25 @@ async def get_all_sessions(
  # Websocket routes
  # --------------
 
-@router.websocket("/ws/attendant}")
+@router.websocket("/ws/attendant")
 async def get_sessions_by_attendant(
     websocket: WebSocket,
-    attendant_id: str = Query(..., description="ID do atendente"),
-    token: str = Depends(user_permission),
-    chat_service: ChatService = Depends(get_chat_service)
 ):
     """
     Retorna a última sessão de cada cliente atendido por um atendente específico.
     """
     await websocket.accept()
     # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
-    
+    token = websocket.query_params.get("token")
+
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    payload = user_permission(token)
+    attendant_id = payload.get("_id")
+    chat_service = await get_chat_service()
+
     await manager.connect(attendant_id, websocket)
 
     while True:

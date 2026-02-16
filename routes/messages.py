@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, WebSocket, Query
-from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, WebSocket
 import json
 from core.dependencies import get_chat_service
-from services.chat_service import ChatService
 from utils.auth import PermissionChecker # Importe seu ConnectionManager global
 from core.websocket import manager
 from handlers.ws.messages import HANDLERS
@@ -16,13 +14,22 @@ router = APIRouter(prefix="/messages", tags=["Messages"])
 @router.websocket("/ws")
 async def chat_endpoint(
     websocket: WebSocket,
-    token: str = Depends(user_permission),
-    attendant_id: str = Query(..., description="ID do atendente")
 ):
+    """
+    Retorna a última sessão de cada cliente atendido por um atendente específico.
+    """
     await websocket.accept()
     # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
-    chat_service = await get_chat_service() 
-    
+    token = websocket.query_params.get("token")
+
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    payload = user_permission(token)
+    attendant_id = payload.get("_id")
+    chat_service = await get_chat_service()
+
     await manager.connect(attendant_id, websocket)
     
     while True:
