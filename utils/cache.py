@@ -24,7 +24,7 @@ class Cache:
     
     async def get(self, key: str) -> str | None:
         raw = await self._client.get(key)
-        return raw.decode() if raw else None
+        return raw
 
     async def set(self, key: str, value: List[Dict[str, Any]] | Dict[str, Any]) -> None:
         # Validate if it is a List of Dicts OR a single Dict
