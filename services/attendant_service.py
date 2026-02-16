@@ -93,20 +93,18 @@ class AttendantService():
             expires_delta=access_token_expires
         )
         token = {"access_token": access_token, "token_type": "bearer"}
-        await self._cache.set("auth_token:", access_token)
+        # store token dict keyed by the access token so verify_token can lookup
+        await self._cache.set(f"auth_token:{access_token}", token)
 
         return token
     
     async def verify_token(self, token:str):
         try:
             cached = await self._cache.get(f"auth_token:{token}")
-            if cached:
-                return True
-            else:
-                return False
-        
+            return True if cached else False
+
         except Exception as e:
-            raise ("Error during token verification: ", e)
+            raise Exception(f"Error during token verification: {e}")
     
     async def logout(self, token:dict):
         try:
