@@ -105,7 +105,7 @@ async def get_all_sessions(
  # Websocket routes
  # --------------
 
-@router.websocket("/ws/attendant/{attendant_id}")
+@router.websocket("/ws/attendant}")
 async def get_sessions_by_attendant(
     websocket: WebSocket,
     attendant_id: str = Query(..., description="ID do atendente"),
