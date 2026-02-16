@@ -24,80 +24,39 @@ class PermissionChecker:
         service = Depends(get_attendant_service)  # Injeta o service para checar o cache
     ):
         logger.debug("Iniciando checagem de permissão; allowed_permissions=%s", self.allowed_permissions)
+        # 1. Resolve token (header ou query)
+        headers = websocket.headers if websocket else request.headers
+        query = websocket.query_params if websocket else request.query_params
 
-        if websocket is not None:
-            auth_header = websocket.headers.get("authorization")
-            query_token = websocket.query_params.get("token")
-            attendant_id = websocket.query_params.get("attendant_id")
-        elif request is not None:
-            auth_header = request.headers.get("authorization")
-            query_token = request.query_params.get("token")
-            attendant_id = request.query_params.get("attendant_id")
+        auth = headers.get("authorization")
+        token = (
+            auth.split()[1] if auth and auth.lower().startswith("bearer ")
+            else auth or query.get("token")
+        )
 
-        if auth_header:
-            parts = auth_header.split()
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                actual_token = parts[1]
-            else:
-                actual_token = auth_header
-            token_source = "header"
-        elif query_token:
-            actual_token = query_token
-            token_source = "query"
-
-        logger.debug("Token fonte resolvida: %s", token_source)
-        
-        if not actual_token:
-            logger.warning("Token de autenticação ausente (nenhuma fonte fornecida)")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Token de autenticação ausente"
-            )
-        # 2. VALIDAÇÃO DE LOGOUT (CACHE):
-        # Verifica se o token ainda existe na "Whitelist" do seu cache/Redis
-        is_active = await service.verify_token(actual_token, attendant_id)
-        logger.debug("Verificação de whitelist/cache do token retornou: %s", is_active)
-        if not is_active:
-            logger.warning("Token inválido ou encerrado segundo cache/whitelist")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Sessão inválida ou encerrada"
-            )
+        if not token:
+            raise HTTPException(401, "Token ausente")
 
         try:
-            # 3. Decodifica o JWT
-            payload = jwt.decode(actual_token, env.SECRET_KEY, algorithms=[env.ALGORITHM])
-            
-            user_id = payload.get("_id")
-            user_permission = payload.get("permission")
-            logger.info("Token decodificado; user_id=%s, permission=%s", user_id, user_permission)
+            # 2. Decode JWT
+            payload = jwt.decode(token, env.SECRET_KEY, algorithms=[env.ALGORITHM])
+            attendant_id = payload.get("_id")
+            permission = payload.get("permission")
 
-            # Validação de estrutura do payload
-            if not user_id or not user_permission:
-                logger.warning("Token com payload incompleto: %s", payload)
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED, 
-                    detail="Token com dados incompletos"
-                )
+            if not attendant_id or not permission:
+                raise HTTPException(401, "Token inválido")
 
-            # 4. Verificação de Permissão (RBAC)
-            # Permite acesso se a permissão estiver na lista ou se for admin
-            if user_permission not in self.allowed_permissions and user_permission != "admin":
-                logger.warning(
-                    "Acesso negado; user_id=%s, permission=%s, required=%s",
-                    user_id, user_permission, self.allowed_permissions
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, 
-                    detail="Você não tem permissão para acessar este recurso"
-                )
+            # 3. Verifica whitelist/cache
+            if not await service.verify_token(token, attendant_id):
+                raise HTTPException(401, "Sessão inválida")
 
-            logger.debug("Permissão concedida para user_id=%s", user_id)
-            return payload 
+            # 4. RBAC
+            if permission not in self.allowed_permissions:
+                raise HTTPException(403, "Permissão negada")
 
-        except ExpiredSignatureError as e:
-            logger.warning("Token expirado: %s", str(e))
-            raise HTTPException(status_code=401, detail="Token expirado")
-        except JWTError as e:
-            logger.exception("Erro ao validar/decodificar token: %s", str(e))
-            raise HTTPException(status_code=401, detail="Token inválido")
+            return payload
+
+        except ExpiredSignatureError:
+            raise HTTPException(401, "Token expirado")
+        except JWTError:
+            raise HTTPException(401, "Token inválido")
