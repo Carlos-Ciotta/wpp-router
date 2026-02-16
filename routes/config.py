@@ -4,8 +4,8 @@ from repositories.config import ConfigRepository
 from core.dependencies import get_config_repository
 from utils.auth import PermissionChecker
 
-admin_permission = PermissionChecker(allowed_roles=["admin"])
-user_permission = PermissionChecker(allowed_roles=["user", "admin"])
+admin_permission = PermissionChecker(allowed_permissions=["admin"])
+user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 

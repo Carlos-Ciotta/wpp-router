@@ -6,8 +6,8 @@ from core.dependencies import get_clients, get_chat_service
 from services.chat_service import ChatService
 from utils.auth import PermissionChecker
 
-admin_permission = PermissionChecker(allowed_roles=["admin"])
-user_permission = PermissionChecker(allowed_roles=["user", "admin"])
+admin_permission = PermissionChecker(allowed_permissions=["admin"])
+user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 

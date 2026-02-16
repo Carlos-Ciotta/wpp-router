@@ -5,8 +5,8 @@ from repositories.contact import ContactRepository
 from core.dependencies import get_contact_repository
 from utils.auth import PermissionChecker
 
-admin_permission = PermissionChecker(allowed_roles=["admin"])
-user_permission = PermissionChecker(allowed_roles=["user", "admin"])
+admin_permission = PermissionChecker(allowed_permissions=["admin"])
+user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
