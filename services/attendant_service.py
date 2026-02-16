@@ -91,7 +91,7 @@ class AttendantService():
             expires_delta=access_token_expires
         )
         token = {"access_token": access_token, "token_type": "bearer"}
-        await self._cache.set("auth_token:", token)
+        await self._cache.set("auth_token:", access_token)
 
         return token
     
