@@ -25,20 +25,14 @@ class PermissionChecker:
     ):
         logger.debug("Iniciando checagem de permissão; allowed_permissions=%s", self.allowed_permissions)
 
-        # 1. Resolve qual token usar (Header ou Query string para WS/request)
-        actual_token = None
-        token_source = None
-
-        # Preferência: Header Authorization (Bearer), senão query param 'token'
-        auth_header = None
-        query_token = None
-
         if websocket is not None:
             auth_header = websocket.headers.get("authorization")
             query_token = websocket.query_params.get("token")
+            attendant_id = websocket.query_params.get("attendant_id")
         elif request is not None:
             auth_header = request.headers.get("authorization")
             query_token = request.query_params.get("token")
+            attendant_id = request.query_params.get("attendant_id")
 
         if auth_header:
             parts = auth_header.split()
@@ -59,10 +53,9 @@ class PermissionChecker:
                 status_code=status.HTTP_401_UNAUTHORIZED, 
                 detail="Token de autenticação ausente"
             )
-
         # 2. VALIDAÇÃO DE LOGOUT (CACHE):
         # Verifica se o token ainda existe na "Whitelist" do seu cache/Redis
-        is_active = await service.verify_token(actual_token)
+        is_active = await service.verify_token(actual_token, attendant_id)
         logger.debug("Verificação de whitelist/cache do token retornou: %s", is_active)
         if not is_active:
             logger.warning("Token inválido ou encerrado segundo cache/whitelist")

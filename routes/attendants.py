@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from services.attendant_service import AttendantService
-from core.dependencies import get_attendant_service, get_chat_service
+from core.dependencies import get_attendant_service
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 from utils.auth import PermissionChecker
@@ -60,17 +60,18 @@ async def login(
 
 @router.post("/logout")
 async def logout(
-    token: str = Depends(oauth2_scheme),
+    attendant_id: str = Depends(oauth2_scheme),
     service: AttendantService = Depends(get_attendant_service)
 ):
-    await service.logout(token)
+    await service.logout(attendant_id)
 
 @router.post("/verify-token")
 async def verify_token(
     token: str = Depends(oauth2_scheme),
+    attendant_id: str = Depends(oauth2_scheme),
     service: AttendantService = Depends(get_attendant_service)
 ):
-    token = await service.verify_token(token)
+    token = await service.verify_token(token,attendant_id)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

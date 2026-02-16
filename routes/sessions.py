@@ -1,10 +1,11 @@
 """Rotas para gerenciamento de sessões de chat."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, Query
 from typing import List, Optional
 from core.dependencies import get_session_repository, get_chat_service
 from services.chat_service import ChatService
 from domain.session.chat_session import ChatSession, SessionStatus
 from pydantic import BaseModel, Field
+from core.websocket import manager
 from datetime import datetime
 from utils.auth import PermissionChecker
 
@@ -86,9 +87,27 @@ async def finish_session(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/attendant/{attendant_id}", response_model=List[SessionResponse])
+@router.get("/", response_model=List[SessionResponse])
+async def get_all_sessions(
+    chat_service: ChatService = Depends(get_chat_service),
+    token: str = Depends(admin_permission),
+):
+    """
+    Retorna a última sessão de cada cliente do sistema.
+    """
+    try:
+        return await chat_service.list_sessions()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+ # --------------
+ # Websocket routes
+ # --------------
+
+@router.websocket("/ws/attendant/{attendant_id}", response_model=List[SessionResponse])
 async def get_sessions_by_attendant(
-    attendant_id: str,
+    websocket: WebSocket,
+    attendant_id: str = Query(..., description="ID do atendente"),
     token: str = Depends(user_permission),
     chat_service: ChatService = Depends(get_chat_service)
 ):
@@ -111,17 +130,3 @@ async def get_sessions_by_attendant(
         return sessions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/", response_model=List[SessionResponse])
-async def get_all_sessions(
-    chat_service: ChatService = Depends(get_chat_service),
-    token: str = Depends(user_permission),
-):
-    """
-    Retorna a última sessão de cada cliente do sistema.
-    """
-    try:
-        return await chat_service.list_sessions()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
