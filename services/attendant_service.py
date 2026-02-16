@@ -85,7 +85,7 @@ class AttendantService():
     async def create_token_for_attendant(self, attendant: dict):
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": attendant["login"], "_id":attendant['_id'],"category": attendant["category"],
+            data={"sub": attendant["login"], "_id":attendant['_id'],
                   "permission":attendant['permission'], "type":"access", 
                   "iat": timedelta(minutes=0), "exp": access_token_expires, "name": attendant["name"]},
             expires_delta=access_token_expires
