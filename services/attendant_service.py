@@ -20,7 +20,7 @@ class AttendantService():
         await self._cache.hset(
             f"attendant:{user_id}",
             mapping={
-                "_id": user["_id],
+                "_id": user["_id"],
                 "name": user["name"],
                 "login": user["login"],
                 "password": user["password"],
