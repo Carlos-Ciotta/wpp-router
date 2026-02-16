@@ -10,7 +10,7 @@ admin_permission = PermissionChecker(allowed_permissions=["admin"])
 user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
-@router.websocket("/messages/ws")
+@router.websocket("/ws")
 async def chat_endpoint(
     websocket: WebSocket,
     auth_data: dict = Depends(user_permission)
