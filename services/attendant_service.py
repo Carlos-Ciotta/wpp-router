@@ -93,14 +93,14 @@ class AttendantService():
             expires_delta=access_token_expires
         )
         token = {"access_token": access_token, "token_type": "bearer"}
-        await self._cache.set("auth_token:", token)
+        await self._cache.set("auth_token:", access_token)
 
         return token
     
     async def verify_token(self, token:str):
         try:
-            token = await self._cache.get(f"auth_token:{token}")
-            if token:
+            cached = await self._cache.get(f"auth_token:{token}")
+            if cached:
                 return True
             else:
                 return False

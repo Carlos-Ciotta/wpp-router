@@ -22,15 +22,14 @@ class Cache:
             self._log.error(f"[CacheService] Redis connection error: {err}")
             return False
     
-    async def get(self, key: str) -> List[Dict[str, Any]] | Dict[str, Any] | None:
-        async with self._lock:
-            raw = await self._client.get(key)
-            return json.loads(raw) if raw else None
+    async def get(self, key: str) -> str | None:
+        raw = await self._client.get(key)
+        return raw
 
     async def set(self, key: str, value: List[Dict[str, Any]] | Dict[str, Any]) -> None:
         # Validate if it is a List of Dicts OR a single Dict
         is_list_of_dicts = isinstance(value, list) and all(isinstance(v, dict) for v in value)
-        is_single_dict = isinstance(value, dict)
+        is_single_dict = isinstance(value, str)
 
         if not (is_list_of_dicts or is_single_dict):
             raise TypeError("Cache.set espera uma lista de dict ou um único dict")
