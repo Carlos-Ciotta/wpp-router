@@ -15,6 +15,7 @@ async def chat_endpoint(
     websocket: WebSocket,
     auth_data: dict = Depends(user_permission)
 ):
+    await websocket.accept()
     user_id = auth_data.get("_id")
     # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
     chat_service = await get_chat_service() 
