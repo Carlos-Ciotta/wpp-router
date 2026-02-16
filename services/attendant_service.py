@@ -22,6 +22,7 @@ class AttendantService():
             mapping={
                 "name": user["name"],
                 "login": user["login"],
+                "password": user["password"],
                 "permission": user["permission"],
                 "sector": json.dumps(user["sector"]),
                 "clients": json.dumps(user["clients"]),
