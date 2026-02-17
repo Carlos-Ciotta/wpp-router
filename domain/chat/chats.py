@@ -7,14 +7,25 @@ class ChatStatus(str, Enum):
     WAITING_MENU = "waiting_menu"
     ACTIVE = "active"
     CLOSED = "closed"
+class Direction(str, Enum):
+    INCOMING = "incoming"
+    OUTGOING = "outgoing"
+
+@dataclass
+class MessageChat():
+    type: str
+    text: str
+    timestamp: int
+    direction: Direction
 
 @dataclass
 class Chat():
     phone_number: str
     created_at: int 
-    last_interaction_at: int 
+    last_interaction_at: int
     status: str = ChatStatus.WAITING_MENU.value
     last_client_interaction_at: Optional[int]=None
+    last_message: Optional[MessageChat] = None
     attendant_id: Optional[str] = None
     category: Optional[str] = None
     _id: Optional[str] = None
