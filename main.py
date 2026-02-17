@@ -9,12 +9,12 @@ from core.indexes import ensure_indexes
 from core.db import mongo_manager
 from core.environment import get_environment
 from core.dependencies import get_clients
-from routes.webhook import router as webhook_router
-from routes.attendants import router as attendants_router
-from routes.config import router as config_router
+#from routes.webhook import router as webhook_router
+#from routes.attendants import router as attendants_router
+#from routes.config import router as config_router
 from routes.sessions import router as sessions_router
-from routes.messages import router as messages_router
-from routes.contacts import router as contacts_router
+#from routes.messages import router as messages_router
+#from routes.contacts import router as contacts_router
 
 env = get_environment()
 
