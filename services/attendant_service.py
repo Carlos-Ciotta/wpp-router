@@ -114,7 +114,7 @@ class AttendantService():
             exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
 
             if exists_token:
-                verified = self.verify_token(exists_token, attendant['_id'])
+                verified = await self.verify_token(exists_token, attendant['_id'])
                 if verified:
                     return exists_token
             
