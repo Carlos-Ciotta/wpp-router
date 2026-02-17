@@ -107,22 +107,41 @@ class AttendantService():
         if not attendant.password_matches(password):
             return None
         
+        attendant.to_dict()
+        attendant['_id'] = str(attendant_data["_id"])
         return attendant_data
         
     async def create_token_for_attendant(self, attendant: dict):
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": attendant["login"], "_id":attendant['_id'],
-                  "permission":attendant['permission'], "type":"access", 
-                  "iat": datetime.now().timestamp(), "exp": access_token_expires, "name": attendant["name"]},
-            expires_delta=access_token_expires
-        )
-        token = {"access_token": access_token, "token_type": "bearer"}
-        # store token dict keyed by the access token so verify_token can lookup
-        await self._cache.set(f"auth_token:{attendant['_id']}", access_token)
+        try:
+            exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
 
-        return token
-    
+            if exists_token:
+                verified = self.verify_token(exists_token, attendant['_id'])
+                if verified:
+                    return exists_token
+            
+            if not attendant:
+                raise Exception("Attendant not found for token creation.")
+            access_token = create_access_token(
+                data={
+                    "sub": attendant["login"],
+                    "_id":attendant['_id'],
+                    "permission":attendant['permission'],
+                    "type":"access", 
+                    "iat": datetime.now().timestamp(),
+                    "exp": ACCESS_TOKEN_EXPIRE_MINUTES, 
+                    "name": attendant["name"]},
+                expires_delta=ACCESS_TOKEN_EXPIRE_MINUTES
+            )
+            token = {"access_token": access_token, "token_type": "bearer"}
+            # store token dict keyed by the access token so verify_token can lookup
+            await self._cache.set(f"auth_token:{attendant['_id']}", access_token)
+
+            return token
+        
+        except Exception as e:
+            raise Exception(f"Error creating token for attendant: {str(e)}")
+        
     async def verify_token(self, token:str, attendant_id:str):
         try:
             user = await self.find_by_login(attendant_id)
