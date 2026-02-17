@@ -4,6 +4,7 @@ import logging
 from fastapi import HTTPException, status, Depends, Request, WebSocket
 from typing import List
 from core.environment import get_environment
+from core import security as core_security
 from core.dependencies import get_attendant_service # Injeção do seu serviço que tem o verify_token
 
 env = get_environment()
@@ -38,8 +39,8 @@ class PermissionChecker:
             raise HTTPException(401, "Token ausente")
 
         try:
-            # 2. Decode JWT
-            payload = jwt.decode(token, env.SECRET_KEY, algorithms=[env.ALGORITHM])
+            # 2. Decode JWT (use same key/algorithm as token creation)
+            payload = jwt.decode(token, core_security.SECRET_KEY, algorithms=[core_security.ALGORITHM])
             attendant_id = payload.get("_id")
             permission = payload.get("permission")
 

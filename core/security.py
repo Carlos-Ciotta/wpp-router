@@ -8,8 +8,8 @@ env = get_environment()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = env.WHATSAPP_INTERNAL_TOKEN or "supersecretkey" # Fallback if internal token is not best for this
-ALGORITHM = "HS256"
+SECRET_KEY = env.SECRET_KEY # Fallback if internal token is not best for this
+ALGORITHM = env.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
 def verify_password(plain_password, hashed_password):
