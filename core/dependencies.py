@@ -92,7 +92,7 @@ async def get_chat_service():
 # core/dependencies.py (Parte HTTP)
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from core.auth_core import verify_token_payload
+from utils.auth import verify_token_payload
 from core.dependencies import get_attendant_service # Sua injeção do serviço
 from services.attendant_service import AttendantService
 
@@ -133,7 +133,7 @@ class RequirePermission:
         return user
     
 from fastapi import WebSocket, status, Query
-from core.auth_core import verify_token_payload
+from utils.auth import verify_token_payload
 
 async def get_ws_user(
     websocket: WebSocket,
