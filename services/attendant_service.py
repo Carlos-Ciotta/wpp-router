@@ -1,15 +1,20 @@
 from domain.attendants.attendant import Attendant
 from repositories.attendant import AttendantRepository
-from core.security import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
-from datetime import timedelta, datetime
+from utils.security import Security
+from datetime import datetime
 from utils.cache import Cache
 import json
+from core.environment import get_environment
 
 class AttendantService():
-    def __init__(self, repository:AttendantRepository,
-                 cache:Cache) -> None:
+    def __init__(self, 
+                 repository:AttendantRepository,
+                 cache:Cache,
+                 security:Security) -> None:
         self._repository = repository
         self._cache = cache
+        self._security = security
+        self._env = get_environment()
 
     # ----------------
     # Cache Helpers
@@ -99,6 +104,7 @@ class AttendantService():
     async def authenticate_attendant(self, login: str, password: str):
         # We need a method to find by login in repo
         attendant_data = await self.find_by_login(login)
+        
         if not attendant_data:
             return None
 
@@ -114,38 +120,29 @@ class AttendantService():
             exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
 
             if exists_token:
-                verified = await self.verify_token(exists_token, attendant['_id'])
-                if verified:
-                    return exists_token
+                verified = await self._security.verify_token(exists_token.decode("utf-8"))
+                return exists_token.decode("utf-8") if verified['_id'] == attendant['_id'] else None
             
             if not attendant:
                 raise Exception("Attendant not found for token creation.")
-            access_token = create_access_token(
-                data={
+            
+            access_token = self._security.create_token(
+                payload={
                     "sub": attendant["login"],
                     "_id":attendant['_id'],
                     "permission":attendant['permission'],
                     "type":"access", 
                     "iat": datetime.now().timestamp(),
-                    "exp": ACCESS_TOKEN_EXPIRE_MINUTES, 
-                    "name": attendant["name"]},
-                expires_delta=ACCESS_TOKEN_EXPIRE_MINUTES
+                    "exp": self._env.ACCESS_TOKEN_EXPIRE_SECONDS, 
+                    "name": attendant["name"]}
             )
-            token = {"access_token": access_token, "token_type": "bearer"}
             # store token dict keyed by the access token so verify_token can lookup
             await self._cache.set(f"auth_token:{attendant['_id']}", access_token)
 
-            return token
+            return access_token
         
         except Exception as e:
             raise Exception(f"Error creating token for attendant: {str(e)}")
-        
-    async def verify_token(self, token:str, attendant_id:str):
-        try:
-            return True
-
-        except Exception as e:
-            raise Exception(f"Error during token verification: {e}")
     
     async def logout(self, attendant_id:str):
         try:

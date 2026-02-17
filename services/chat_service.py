@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional, Any, Union
-from domain.session.chat_session import ChatSession, SessionStatus
-from repositories.session import SessionRepository
+from domain.chat.chats import Chat, ChatStatus
+from repositories.chat_repo import ChatRepository
 from repositories.attendant import AttendantRepository
 from repositories.config import ConfigRepository
 from repositories.template import TemplateRepository
@@ -22,22 +22,22 @@ TZ_BR = ZoneInfo("America/Sao_Paulo")
 
 class ChatService:
     def __init__(self, wa_client, 
-                 session_repo, 
+                 chat_repo, 
                  attendant_repo, 
                  config_repo, 
                  template_repo, 
                  contact_repo, 
                  cache,message_repo,
-                  session_cache_key="session_cache",):
+                  chat_cache_key="chat_cache",):
         self.wa_client : WhatsAppClient = wa_client
-        self.session_repo : SessionRepository= session_repo
+        self.chat_repo : ChatRepository= chat_repo
         self._config_repo : ConfigRepository = config_repo
         self.attendant_repo :AttendantRepository= attendant_repo
         self._template_repo : TemplateRepository = template_repo
         self._contact_repo : ContactRepository = contact_repo
         self._cache : Cache = cache
         self._message_repo : MessageRepository = message_repo
-        self._cache_key = session_cache_key
+        self._cache_key = chat_cache_key
 
     # ------------------------
     # Cache Functions
@@ -55,7 +55,7 @@ class ChatService:
     async def _invalidate_attendant_cache(self, attendant_id: str):
         if attendant_id:
             try:
-                await self._cache.delete(f"sessions:{attendant_id}")
+                await self._cache.delete(f"chats:{attendant_id}")
             except Exception as e:
                 logging.error(f"Erro ao invalidar cache do atendente {attendant_id}: {e}")
 
@@ -89,21 +89,21 @@ class ChatService:
     # ------------------------
     # Query operations
     # ------------------------
-    async def get_sessions_by_attendant(self, attendant_id: str):
+    async def get_chats_by_attendant(self, attendant_id: str):
         try:
             await self._validate_objectid(attendant_id)
             if self._cache.ensure:
-                cached = await self._cache.get(f"sessions:{attendant_id}")
+                cached = await self._cache.get(f"chats:{attendant_id}")
                 if cached:
                     return cached
-            sessions = []
-            async for s in self.session_repo.get_sessions_by_attendant(attendant_id):
+            chats = []
+            async for s in self.chat_repo.get_chats_by_attendant(attendant_id):
                 if hasattr(s, 'to_dict'):
-                    sessions.append(s.to_dict())
+                    chats.append(s.to_dict())
                 else:
-                    sessions.append(s)
-            await self._cache.set(f"sessions:{attendant_id}", sessions)
-            return sessions
+                    chats.append(s)
+            await self._cache.set(f"chats:{attendant_id}", chats)
+            return chats
         except ValueError as ve:
             logging.error(f"Erro de validação: {ve}")
             return []
@@ -118,16 +118,16 @@ class ChatService:
         except Exception as e:
             logging.error(f"Erro ao buscar mensagens para {phone}: {e}")
             return []
-    async def list_sessions(self):
+    async def list_chats(self):
         """Lista todas as sessões de chat."""
         try:
-            sessions = []
-            async for s in self.session_repo.get_all_sessions():
+            chats = []
+            async for s in self.chat_repo.get_all_chats():
                 if hasattr(s, 'to_dict'):
-                    sessions.append(s.to_dict())
+                    chats.append(s.to_dict())
                 else:
-                    sessions.append(s)
-            return sessions
+                    chats.append(s)
+            return chats
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
             return []
@@ -142,7 +142,7 @@ class ChatService:
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
         
         response = await self.wa_client.send_text(phone, text)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
     async def send_image_message(self, phone: str, image_url: str, caption: str = None):
@@ -151,7 +151,7 @@ class ChatService:
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
         response = await self.wa_client.send_image(phone, image_url, caption=caption)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
     async def send_video_message(self, phone: str, video_url: str, caption: str = None):
@@ -160,7 +160,7 @@ class ChatService:
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
         response = await self.wa_client.send_video(phone, video_url, caption=caption)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
     async def send_document_message(self, phone: str, document_url: str, caption: str = None, filename: str = None):
@@ -169,14 +169,14 @@ class ChatService:
             raise ValueError("Janela de 24h fechada. Envie um Template Message.")
             
         response = await self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
     async def send_template_message(self, phone: str, template_name: str, language_code: str = "pt_BR", components: list = None):
         """Envia mensagem de template (HSM)."""
         response = await self.wa_client.send_template(phone, template_name, language_code, components)
         # Templates podem ser enviados fora da janela de 24h, então atualizamos a interação
-        await self.session_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
+        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
         return response
 
     # ------------------------
@@ -187,25 +187,25 @@ class ChatService:
         """Inicia uma nova sessão de chat para um cliente."""
         # 1. Verifica se já tem sessão ativa
         try:
-            session = await self.session_repo.get_last_session(phone)
-            if session and (session.get("status") == SessionStatus.ACTIVE.value or session.get("status") == SessionStatus.WAITING_MENU.value):
+            chat = await self.chat_repo.get_last_chat(phone)
+            if chat and (chat.get("status") == ChatStatus.ACTIVE.value or chat.get("status") == ChatStatus.WAITING_MENU.value):
                 raise ValueError("Cliente já possui uma sessão ativa ou está no menu de espera")
             
 
             # 2. Cria nova sessão
-            new_session = ChatSession(
+            new_chat = Chat(
                 phone_number=phone,
                 attendant_id=attendant_id,
                 category=category,
-                status=SessionStatus.ACTIVE.value,
+                status=ChatStatus.ACTIVE.value,
                 created_at=datetime.now(TZ_BR).timestamp(),
                 last_interaction_at=datetime.now(TZ_BR).timestamp()
             )
-            await self.session_repo.create_session(new_session.to_dict())
-            await self.set_active_sessions(phone=phone)
+            await self.chat_repo.create_chat(new_chat.to_dict())
+            await self.set_active_chats(phone=phone)
             await self._invalidate_attendant_cache(attendant_id)
 
-            return new_session
+            return new_chat
         except Exception as e:
             logging.error(f"Erro ao iniciar chat: {e}")
             raise ValueError("Não foi possível iniciar o chat. Tente novamente mais tarde.")
@@ -218,15 +218,15 @@ class ChatService:
             raise ValueError("Novo atendente não encontrado.")
 
         # 2. Verifica se tem sessão ativa
-        session = await self.session_repo.get_last_session(phone = phone)
+        chat = await self.chat_repo.get_last_chat(phone = phone)
 
-        if not session or not session.get("status") == SessionStatus.ACTIVE.value:
+        if not chat or not chat.get("status") == ChatStatus.ACTIVE.value:
             raise ValueError("Cliente não possui sessão ativa para transferir.")
             
-        old_attendant_id = session.get("attendant_id")
+        old_attendant_id = chat.get("attendant_id")
         sector = new_attendant.get("sector")
         
-        assing = await self.session_repo.assign_attendant(phone, new_attendant_id, sector)
+        assing = await self.chat_repo.assign_attendant(phone, new_attendant_id, sector)
         
         await self._invalidate_attendant_cache(new_attendant_id)
         if old_attendant_id:
@@ -234,12 +234,12 @@ class ChatService:
         
         return assing
 
-    async def finish_session(self, phone: str):
+    async def finish_chat(self, phone: str):
         """Finaliza a sessão ativa do cliente."""
-        session = await self.session_repo.get_last_session(phone)
-        attendant_id = session.get("attendant_id") if session else None
+        chat = await self.chat_repo.get_last_chat(phone)
+        attendant_id = chat.get("attendant_id") if chat else None
 
-        await self.session_repo.close_session(phone)
+        await self.chat_repo.close_chat(phone)
         
         if attendant_id:
             await self._invalidate_attendant_cache(attendant_id)
@@ -254,12 +254,12 @@ class ChatService:
         - Se dentro de 24h: Janela aberta (True)
         """
         # 1. Busca sessão ativa ou última sessão
-        session = await self.session_repo.get_last_session(phone)
+        chat = await self.chat_repo.get_last_chat(phone)
 
-        if not session:
+        if not chat:
             return False # Nunca houve contato
 
-        last_interaction = session.get("last_client_interaction_at")
+        last_interaction = chat.get("last_client_interaction_at")
         if not last_interaction:
             return False
 
@@ -301,24 +301,24 @@ class ChatService:
              logging.error(f"Erro ao salvar contato {phone}: {e}")
 
         config = await self.get_cached_config()
-        session = await self.session_repo.get_last_session(phone=phone)
+        chat = await self.chat_repo.get_last_chat(phone=phone)
         
         # Se não existe sessao ou está fechada -> Inicia nova
-        if not session or session.get("status") not in [SessionStatus.ACTIVE.value, SessionStatus.WAITING_MENU.value]:
-            return await self._automated_start_new_session(phone, config)
+        if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
+            return await self._automated_start_new_chat(phone, config)
 
         # Gerenciamento de Estado usando Match (Python 3.10+)
-        status = session.get("status")
+        status = chat.get("status")
         match status:
-            case SessionStatus.WAITING_MENU.value: # Add .value
-                await self._handle_menu_selection(session, msg_dict, config)
-            case SessionStatus.ACTIVE.value: # Add .value
-                await self.session_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
+            case ChatStatus.WAITING_MENU.value: # Add .value
+                await self._handle_menu_selection(chat, msg_dict, config)
+            case ChatStatus.ACTIVE.value: # Add .value
+                await self.chat_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
             case _: # Handle string fallback if enum lookup fails
                 if status == "waiting_menu":
-                    await self._handle_menu_selection(session, msg_dict, config)
+                    await self._handle_menu_selection(chat, msg_dict, config)
                 elif status == "active":
-                    await self.session_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
+                    await self.chat_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
     
     # -----------------------
     # Helpers
@@ -351,16 +351,16 @@ class ChatService:
                 
         return False
     
-    async def _automated_start_new_session(self, phone: str, config: ChatConfig):
-        new_session = ChatSession(
+    async def _automated_start_new_chat(self, phone: str, config: ChatConfig):
+        new_chat = Chat(
                                 phone_number=phone,
-                                status=SessionStatus.WAITING_MENU.value,
+                                status=ChatStatus.WAITING_MENU.value,
                                 created_at=datetime.now(TZ_BR).timestamp(),
                                 last_client_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 last_interaction_at=datetime.now(TZ_BR).timestamp(),
                                 )
-        await self.session_repo.create_session(new_session.to_dict())
-        # Removed set_active_sessions which was undefined
+        await self.chat_repo.create_chat(new_chat.to_dict())
+        # Removed set_active_chats which was undefined
         
         # Prepara botões - Garante fallback se config estiver vazia
         buttons = [{"id": b.id, "title": b.title} for b in config.greeting_buttons] or \
@@ -373,7 +373,7 @@ class ChatService:
             header_text=config.greeting_header
         )
 
-    async def _handle_menu_selection(self, session: dict, message: dict, config: ChatConfig):
+    async def _handle_menu_selection(self, chat: dict, message: dict, config: ChatConfig):
         # Extração limpa do payload de resposta
         msg_type = message.get("type")
         raw_data = message.get("raw_data", {})
@@ -390,7 +390,7 @@ class ChatService:
             selected_option = raw_data.get("button", {}).get("payload")
 
         selected_btn = next((b for b in config.greeting_buttons if b.id == selected_option), None)
-        phone = session.get("phone_number")
+        phone = chat.get("phone_number")
 
         if not selected_btn:
             if selected_option: # If they selected something but it didn't match
@@ -424,7 +424,7 @@ class ChatService:
         working_attendants.sort(key=lambda x: str(x["_id"]))
         
         # 4. Recupera último atendente atribuído genericamente nesta categoria
-        last_id = await self.session_repo.get_last_assigned_attendant_id(sector.lower())
+        last_id = await self.chat_repo.get_last_assigned_attendant_id(sector.lower())
         
         if not last_id:
             return working_attendants[0]
@@ -466,7 +466,7 @@ class ChatService:
         attendant_name = attendant.get("name", "Atendente")
         attendant_id = str(attendant.get("_id"))
         
-        await self.session_repo.assign_attendant(phone, attendant_id, sector_name.lower())
+        await self.chat_repo.assign_attendant(phone, attendant_id, sector_name.lower())
         await self._invalidate_attendant_cache(attendant_id)
         
         # Mensagem de boas vindas

@@ -1,7 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorCollection
-from domain.session.chat_session import  SessionStatus
+from domain.chat.chats import  ChatStatus
 from typing import Optional
-from datetime import datetime
 from bson import ObjectId
 
 def _serialize_doc(doc: dict) -> dict:
@@ -14,20 +13,20 @@ def _serialize_doc(doc: dict) -> dict:
     
     return doc
 
-class SessionRepository:
+class ChatRepository:
     def __init__(self, collection: AsyncIOMotorCollection):
         self._collection = collection
 
     # ------------------------
     # Query Operations
     # ------------------------
-    async def get_active_sessions(self):
+    async def get_active_chats(self):
         try:
             cursor = self._collection.find({
                     "status": {
                         "$in": [
-                            SessionStatus.ACTIVE.value,
-                            SessionStatus.WAITING_MENU.value
+                            ChatStatus.ACTIVE.value,
+                            ChatStatus.WAITING_MENU.value
                         ]
                     }
                 },
@@ -38,7 +37,7 @@ class SessionRepository:
         except Exception:
             return None
         
-    async def get_last_session(self, phone: str) -> Optional[dict]:
+    async def get_last_chat(self, phone: str) -> Optional[dict]:
         """Recupera a última sessão do cliente, independente do status."""
         cursor = self._collection.find({"phone_number": phone}).sort("last_interaction_at", -1).limit(1)
         # Note: sort by last_interaction_at desc
@@ -53,7 +52,7 @@ class SessionRepository:
             return None
         return None
 
-    async def get_sessions_by_attendant(self, 
+    async def get_chats_by_attendant(self, 
                                         attendant_id: str, 
                                         limit:int = 50, 
                                         skip:int = 0):
@@ -65,7 +64,7 @@ class SessionRepository:
         async for doc in cursor:
             yield _serialize_doc(doc)
 
-    async def get_all_sessions(self,limit: int = 300, skip : int = 0):
+    async def get_all_chats(self,limit: int = 300, skip : int = 0):
         """Busca todas as sessões, opcionalmente filtradas por status."""
         
         cursor = self._collection.find().sort("last_interaction_at", -1).limit(limit).skip(skip)
@@ -82,19 +81,19 @@ class SessionRepository:
         return None
     # CRUD Operations
 
-    async def create_session(self, session: dict):
+    async def create_chat(self, chat: dict):
         result = await self._collection.find_one_and_update(
-            {"phone_number": session.get("phone_number")},
-            {"$set": session},
+            {"phone_number": chat.get("phone_number")},
+            {"$set": chat},
             upsert=True,
             return_document=True
         )
         return _serialize_doc(result)
 
-    async def close_session(self, phone: str):
+    async def close_chat(self, phone: str):
         response=await self._collection.update_one(
-            {"phone_number": phone, "status": {"$ne": SessionStatus.CLOSED.value}},
-            {"$set": {"status": SessionStatus.CLOSED.value}}
+            {"phone_number": phone, "status": {"$ne": ChatStatus.CLOSED.value}},
+            {"$set": {"status": ChatStatus.CLOSED.value}}
         )
         return response.modified_count > 0
     

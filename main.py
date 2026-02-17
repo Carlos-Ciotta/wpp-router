@@ -12,7 +12,7 @@ from core.dependencies import get_clients
 from routes.webhook import router as webhook_router
 from routes.attendants import router as attendants_router
 from routes.config import router as config_router
-from routes.sessions import router as sessions_router
+from routes.chat_routes import router as chats_router
 from routes.messages import router as messages_router
 from routes.contacts import router as contacts_router
 
@@ -50,7 +50,7 @@ app.add_middleware(
 app.include_router(webhook_router)
 app.include_router(attendants_router)
 app.include_router(config_router)
-app.include_router(sessions_router)
+app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
 

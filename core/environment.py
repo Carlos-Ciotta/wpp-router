@@ -13,6 +13,8 @@ class EnvironmentSettings(BaseSettings):
     WHATSAPP_TOKEN: str
     WHATSAPP_INTERNAL_TOKEN:str
 
+    ACCESS_TOKEN_EXPIRE_SECONDS:int
+    
     REDIS_URL: str
     # Server
     HOST: str = "0.0.0.0"

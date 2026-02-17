@@ -12,3 +12,4 @@ python-multipart
 bcrypt==4.0.1
 redis==7.1.1
 jwt
+python-jose
