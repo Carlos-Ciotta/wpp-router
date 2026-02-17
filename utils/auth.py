@@ -24,6 +24,7 @@ class PermissionChecker:
         websocket: WebSocket = None,
         service = Depends(get_attendant_service)  # Injeta o service para checar o cache
     ):
+        print(f"PermissionChecker called; request={'yes' if request is not None else 'no'}, websocket={'yes' if websocket is not None else 'no'}")
         logger.debug("Iniciando checagem de permissão; allowed_permissions=%s", self.allowed_permissions)
         # 1. Resolve token (header ou query)
         headers = websocket.headers if websocket else request.headers
