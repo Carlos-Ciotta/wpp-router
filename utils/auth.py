@@ -43,13 +43,14 @@ class PermissionChecker:
             attendant_id = payload.get("_id")
             permission = payload.get("permission")
 
+            print(f'permission {permission}')
             if not attendant_id or not permission:
                 raise HTTPException(401, "Token inválido")
-
+            print ('passed decode, now checking cache/whitelist')
             # 3. Verifica whitelist/cache
             if not await service.verify_token(token, attendant_id):
                 raise HTTPException(401, "Sessão inválida")
-
+            print('passed cache/whitelist check')
             # 4. RBAC
             if permission not in self.allowed_permissions:
                 raise HTTPException(403, "Permissão negada")

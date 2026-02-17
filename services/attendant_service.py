@@ -147,7 +147,7 @@ class AttendantService():
                 return False
             
             cached = await self._cache.get(f"auth_token:{attendant_id}")
-            
+            print(f"Verifying token: provided={token}, cached={cached}")
             if str(cached) == str(token):
                 return True
             return False
