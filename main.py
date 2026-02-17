@@ -47,12 +47,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(webhook_router)
-app.include_router(attendants_router)
-app.include_router(config_router)
+#app.include_router(webhook_router)
+#app.include_router(attendants_router)
+#app.include_router(config_router)
 app.include_router(sessions_router)
-app.include_router(messages_router)
-app.include_router(contacts_router)
+#app.include_router(messages_router)
+#app.include_router(contacts_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)
