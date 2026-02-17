@@ -9,9 +9,11 @@ from core.websocket import manager
 from datetime import datetime
 from utils.auth import PermissionChecker
 import json
+from core.dependencies import RequirePermission, get_current_user
 
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
+# Instâncias de permissão reutilizáveis
+admin_only = RequirePermission(["admin"])
+any_user = RequirePermission(["user", "admin"])
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -41,7 +43,7 @@ class TransferSessionRequest(BaseModel):
 @router.post("/start", response_model=SessionResponse, status_code=201)
 async def start_session(
     request: StartSessionRequest,
-    token: str = Depends(user_permission),
+    user: dict = Depends(any_user),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
