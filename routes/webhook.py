@@ -5,9 +5,9 @@ from client.whatsapp.V24 import WhatsAppClient
 from core.dependencies import get_clients, get_chat_service
 from services.chat_service import ChatService
 from utils.auth import PermissionChecker
-
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
+from core.dependencies import RequirePermission
+admin_permission = RequirePermission(["admin"])
+user_permission = RequirePermission(["user", "admin"])
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 

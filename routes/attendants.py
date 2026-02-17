@@ -6,9 +6,9 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 from utils.auth import PermissionChecker
 
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
-
+from core.dependencies import RequirePermission
+admin_permission = RequirePermission(["admin"])
+user_permission = RequirePermission(["user", "admin"])
 router = APIRouter(prefix="/attendants", tags=["Attendants"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="attendants/login")
 # --- Schemas ---
