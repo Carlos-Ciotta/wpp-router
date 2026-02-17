@@ -1,5 +1,5 @@
 """Rotas para gerenciamento de sessões de chat."""
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, Query, Request
 from typing import List, Optional
 from core.dependencies import get_session_repository, get_chat_service
 from services.chat_service import ChatService
@@ -14,6 +14,14 @@ admin_permission = PermissionChecker(allowed_permissions=["admin"])
 user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
+
+
+async def _debug_headers(request: Request):
+    try:
+        print("DEBUG: request headers:", dict(request.headers))
+    except Exception:
+        print("DEBUG: could not read headers")
+    return None
 
 # --- Schemas ---
 class SessionResponse(BaseModel):
@@ -90,6 +98,7 @@ async def finish_session(
 
 @router.get("/", response_model=List[SessionResponse])
 async def get_all_sessions(
+    _debug: None = Depends(_debug_headers),
     chat_service: ChatService = Depends(get_chat_service),
     token: str = Depends(admin_permission),
 ):
