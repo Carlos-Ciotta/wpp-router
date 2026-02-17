@@ -107,9 +107,7 @@ class AttendantService():
         if not attendant.password_matches(password):
             return None
         
-        attendant.to_dict()
-        attendant['_id'] = str(attendant_data["_id"])
-        return attendant_data
+        return attendant.to_dict()
         
     async def create_token_for_attendant(self, attendant: dict):
         try:
