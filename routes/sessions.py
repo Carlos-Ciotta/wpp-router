@@ -15,14 +15,6 @@ user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
-
-async def _debug_headers(request: Request):
-    try:
-        print("DEBUG: request headers:", dict(request.headers))
-    except Exception:
-        print("DEBUG: could not read headers")
-    return None
-
 # --- Schemas ---
 class SessionResponse(BaseModel):
     phone_number: str
@@ -98,18 +90,13 @@ async def finish_session(
 
 @router.get("/", response_model=List[SessionResponse])
 async def get_all_sessions(
-    request: Request,
-    _debug: None = Depends(_debug_headers),
     chat_service: ChatService = Depends(get_chat_service),
-    # token: str = Depends(admin_permission),
+    token: str = Depends(admin_permission),
 ):
     """
     Retorna a última sessão de cada cliente do sistema.
     """
     try:
-        # Chamamos o PermissionChecker manualmente para debugar sua execução
-        payload = await admin_permission(request=request)
-        print("Manual admin_permission payload:", payload)
         return await chat_service.list_sessions()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

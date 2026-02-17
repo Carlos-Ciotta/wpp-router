@@ -142,14 +142,19 @@ class AttendantService():
         
     async def verify_token(self, token:str, attendant_id:str):
         try:
-            user = await self.find_by_login(attendant_id)
+            user = await self.find_by_id(attendant_id)
             if not user:
+                print(f"Usuário {attendant_id} não encontrado no cache/banco")
                 return False
             
+            # 2. Busca o token no cache
             cached = await self._cache.get(f"auth_token:{attendant_id}")
-            print(f"Verifying token: provided={token}, cached={cached}")
-            if str(cached) == str(token):
+            
+            # Importante: Garantir comparação de strings limpas
+            if cached and str(cached).strip() == str(token).strip():
                 return True
+                
+            print(f"Token mismatch: provido={token}, cache={cached}")
             return False
 
         except Exception as e:
