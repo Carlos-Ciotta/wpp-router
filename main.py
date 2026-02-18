@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
     
     await mongo_manager.disconnect()
 
-get_db_collection()
 get_config_service()
 get_message_service()
 get_contact_service()
