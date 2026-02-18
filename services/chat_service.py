@@ -442,8 +442,16 @@ class ChatService:
             raise ValueError("ID inválido. Deve ser um ObjectId válido.")
     
     def _is_working_hour(self, working_hours: dict) -> bool:
+        # If no working hours provided, assume attendant is available
         if not working_hours:
-            return False
+            return True
+
+        # If stored as JSON string in some caches/records, try to parse
+        if isinstance(working_hours, str):
+            try:
+                working_hours = json.loads(working_hours)
+            except Exception:
+                return True
             
         now_dt = datetime.now(TZ_BR)
         current_day = str(now_dt.weekday())
@@ -535,7 +543,7 @@ class ChatService:
         working_attendants.sort(key=lambda x: str(x["_id"]))
         
         # 4. Recupera último atendente atribuído genericamente nesta categoria
-        last_id = await self.chat_repo.get_last_assigned_attendant_id(sector.lower())
+        last_id = await self.chat_repo.get_last_assigned_attendant_id()
         
         if not last_id:
             return working_attendants[0]
@@ -555,22 +563,22 @@ class ChatService:
             return working_attendants[0]
 
     async def _route_sector(self, phone: str, config: ChatConfig, sector_name: str):
-        # 1. Tenta encontrar atendente vinculado diretamente
-        attendant = await self._attendant_service.get_by_clients_and_sector(phone, sector_name)
+        # 1. Tenta encontrar atendente vinculado diretamente (normaliza o telefone antes)
+        search_phone = self._normalize_phone(phone)
+        attendant = await self._attendant_service.get_by_clients_and_sector(search_phone, sector_name)
         
         if attendant:
-            # Verifica apenas se está no horário
+            # Verifica apenas se está no horário; se não estiver, tenta próximo disponível
             wh = attendant.get("working_hours")
             if not self._is_working_hour(wh):
-                self._get_next_attendant(sector_name)
-                return None
+                next_att = await self._get_next_attendant(sector_name)
+                if next_att:
+                    attendant = next_att
+                else:
+                    return None
         else:
             # 2. Se não tem vínculo, faz rodízio entre disponíveis
             attendant = await self._get_next_attendant(sector_name)
-            
-            if not attendant:
-                await self.wa_client.send_text(phone, config.absence_message)
-                return None
 
         # 3. Atribuição
         attendant_name = attendant.get("name", "Atendente")
