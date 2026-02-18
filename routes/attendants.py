@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from core.dependencies import get_attendant_service, get_security
 from typing import List, Optional, Dict
@@ -50,7 +50,7 @@ class AttendantRoutes():
         """
         security = get_security()
         attendant_service = get_attendant_service()
-        security.verify_permission(token.credentials, ["admin"])
+        await security.verify_permission(token.credentials, ["admin"])
         result = await attendant_service.create_attendant(attendant.model_dump())
         return {"id": str(result), "message": "Attendant created successfully"}
 
@@ -72,7 +72,7 @@ class AttendantRoutes():
         return await attendant_service.create_token_for_attendant(attendant)
 
     async def logout(self,
-        attendant_id: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
+        attendant_id: str = Query(..., description="ID do atendente a ser deslogado"),
     ):
         attendant_service = get_attendant_service()
         await attendant_service.logout(attendant_id)
@@ -92,7 +92,7 @@ class AttendantRoutes():
         """
         security = get_security()
         attendant_service = get_attendant_service()
-        security.verify_permission(token.credentials, ["admin"])
+        await security.verify_permission(token.credentials, ["admin"])
         attendants = await attendant_service.list_attendants()
         for att in attendants:
             if "_id" in att:

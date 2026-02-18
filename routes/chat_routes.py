@@ -59,7 +59,7 @@ class ChatRoutes():
         try:
             security = get_security()
             chat_service = get_chat_service()
-            security.verify_permissions(token.credentials, ["user", "admin"])
+            await security.verify_permission(token.credentials, ["user", "admin"])
             chat = await chat_service.start_chat(payload.phone_number, payload.attendant_id, payload.category)
             return {"message": "Sessão iniciada com sucesso", "chat": chat, 
                 "free_message":bool(chat_service.can_send_free_message(payload.phone_number))}
@@ -77,7 +77,7 @@ class ChatRoutes():
         try:
             security = get_security()
             chat_service = get_chat_service()
-            security.verify_permissions(token.credentials, ["user", "admin"])
+            await security.verify_permission(token.credentials, ["user", "admin"])
             await chat_service.transfer_chat(payload.phone_number, payload.new_attendant_id)
             return {"message": "Atendimento transferido com sucesso", 
                 "free_message":bool(chat_service.can_send_free_message(payload.phone_number))}
@@ -95,7 +95,7 @@ class ChatRoutes():
             try:
                 security = get_security()
                 chat_service = get_chat_service()
-                security.verify_permissions(token.credentials, ["user", "admin"])
+                await security.verify_permission(token.credentials, ["user", "admin"])
                 await chat_service.finish_chat(phone_number)
                 return {"message": "Sessão finalizada com sucesso"}
             
@@ -110,7 +110,7 @@ class ChatRoutes():
         try:
             security = get_security()
             chat_service = get_chat_service()
-            security.verify_permissions(token.credentials, ["admin"])
+            await security.verify_permission(token.credentials, ["admin"])
             return await chat_service.list_chats()
         
         except Exception as e:
@@ -137,7 +137,7 @@ class ChatRoutes():
             token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
             # 4. Validar o token (usando a string limpa)
-            decoded = security.verify_permission(token, required_roles=["admin"])
+            decoded = await security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
@@ -200,7 +200,7 @@ class ChatRoutes():
             token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
             # 4. Validar o token (usando a string limpa)
-            decoded = security.verify_permission(token, required_roles=["admin"])
+            decoded = await security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
