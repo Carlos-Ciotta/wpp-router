@@ -27,8 +27,7 @@ class ChatService:
                  config_repo, 
                  template_repo, 
                  contact_service, 
-                 cache,
-                  chat_cache_key="chat_cache",):
+                 cache,):
         self.wa_client : WhatsAppClient = wa_client
         self.chat_repo : ChatRepository= chat_repo
         self._config_repo : ConfigRepository = config_repo
@@ -36,7 +35,6 @@ class ChatService:
         self._template_repo : TemplateRepository = template_repo
         self._contact_service : ContactService = contact_service
         self._cache : Cache = cache
-        self._cache_key = chat_cache_key
 
     # ------
     # Config Cache

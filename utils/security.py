@@ -1,11 +1,10 @@
-from core.dependencies import get_attendant_service
+
 from core.environment import get_environment
 from fastapi import HTTPException
 from jose import jwt,JWTError
 
 class Security():
     def __init__(self):
-        self._attendant_service = get_attendant_service
         self._env = get_environment()
     
     async def create_token(self,

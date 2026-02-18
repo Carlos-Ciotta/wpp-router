@@ -3,13 +3,19 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from core.settings import settings
 from core.db import mongo_manager
 from core.environment import get_environment
+
 from repositories.message import MessageRepository
 from repositories.chat_repo import ChatRepository
 from repositories.attendant import AttendantRepository
 from repositories.config import ConfigRepository
 from repositories.template import TemplateRepository
 from repositories.contact import ContactRepository
+
 from services.attendant_service import AttendantService
+from services.chat_service import ChatService
+from services.contact_service import ContactService
+from services.message_service import MessageService
+
 from client.whatsapp.V24 import WhatsAppClient
 from utils.cache import Cache
 from utils.security import Security
@@ -21,76 +27,83 @@ def get_settings():
 env = get_environment()
 
 
-async def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
+def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
 	"""Retorna uma coleção do MongoDB."""
 	db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
 	return db[collection_name]
 
-async def get_cache():
+def get_cache():
 	"""Retorna uma instância do cache."""
 	return Cache(env.REDIS_URL)
 
-async def get_message_repository():
-	"""Retorna uma instância do repositório de mensagens."""
-	collection = await get_db_collection("messages")
-	return MessageRepository(collection)
-
-async def get_chat_repository():
-    collection = await get_db_collection("chats")
-    return ChatRepository(collection)
-
-async def get_attendant_repository():
-    collection = await get_db_collection("attendants")
-    return AttendantRepository(collection)
-
-async def get_attendant_service():
-    repo = await get_attendant_repository()
-    cache = await get_cache()
-    return AttendantService(repo, cache)
-
-async def get_config_repository():
-    collection = await get_db_collection("configs")
-    return ConfigRepository(collection)
-
-async def get_template_repository():
-    collection = await get_db_collection("templates")
-    return TemplateRepository(collection)
-
-async def get_contact_repository():
-    collection = await get_db_collection("contacts")
-    return ContactRepository(collection)
+def get_repositories():
+    """Retorna todas as instâncias dos repositórios."""
+    return {
+        "message_repository": MessageRepository(
+            get_db_collection("messages")
+        ),
+        "chat_repository": ChatRepository(
+            get_db_collection("chats")
+        ),
+        "attendant_repository": AttendantRepository(
+            get_db_collection("attendants")
+        ),
+        "config_repository": ConfigRepository(
+            get_db_collection("configs")
+        ),
+        "template_repository": TemplateRepository(
+            get_db_collection("templates")
+        ),
+        "contact_repository": ContactRepository(
+            get_db_collection("contacts")
+        )
+    }
 
 async def get_security():
     """Retorna uma instância do Security."""
     return Security()
 
-async def get_clients():
+def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {
 		"whatsapp": WhatsAppClient(
 			phone_id=env.WHATSAPP_PHONE_ID,
 			business_account_id=env.WHATSAPP_BUSINESS_ACCOUNT_ID,
 			wa_token=env.WHATSAPP_TOKEN,
-			repository=await get_message_repository(),
+			repository=get_repositories()["config_repository"],
 			base_url="https://graph.facebook.com/v24.0",
 			internal_token=env.WHATSAPP_INTERNAL_TOKEN
 		)
 	}
-from services.chat_service import ChatService
-async def get_chat_service():
-    clients = await get_clients()
-    wa_client = clients["whatsapp"]
-    chat_repo = await get_chat_repository()
-    attendant_repo = await get_attendant_repository()
-    config_repo = await get_config_repository()
-    template_repo = await get_template_repository()
-    contact_repo = await get_contact_repository()
-    message_repo = await get_message_repository()
-    return ChatService(wa_client, 
-                       chat_repo, 
-                       attendant_repo, 
-                       config_repo, 
-                       template_repo, 
-                       contact_repo,
-                       message_repo=message_repo, 
-                       cache=await get_cache())
+def get_attendant_service():
+    """Retorna uma instância do AttendantService."""
+    return AttendantService(
+        attendant_repo=(get_repositories())["attendant_repository"],
+        cache=get_cache()
+    )
+def get_contact_service():
+    """Retorna uma instância do ContactService."""
+    return ContactService(
+        contact_repo=(get_repositories())["contact_repository"],
+        cache=get_cache(),
+        security=get_security()
+    )
+def get_chat_service():
+    """Retorna chat service"""
+    return ChatService(
+            wa_client=(get_clients())["whatsapp"],
+			chat_repo= (get_repositories())["chat_repository"],
+			template_repo= (get_repositories())["template_repository"],
+			config_repo= (get_repositories())["config_repository"],
+			attendant_service=get_attendant_service(),
+            contact_service=get_contact_service(),
+            cache=get_cache()
+    )
+
+def get_message_service():
+    """Retorna message service"""
+    return MessageService(
+        message_repo=(get_repositories())["message_repository"],
+        chat_service=get_chat_service(),
+        cache=get_cache()
+    )
