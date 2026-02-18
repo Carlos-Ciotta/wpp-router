@@ -62,8 +62,8 @@ class WhatsAppClient:
             if wa_message_id:
                 await self._repo.save_messages_bulk([save_payload])
             return response.json()
-        except httpx.exceptions.RequestException as e:
-            print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
+        except httpx.HTTPError as e:
+            print(f"❌ Erro na API WhatsApp: {e}")
             raise
     
     def _sanitize_phone(self, phone: str) -> str:
@@ -95,8 +95,8 @@ class WhatsAppClient:
             response.raise_for_status()
             data = response.json()
             return data.get("data", [])
-        except httpx.exceptions.RequestException as e:
-            print(f"❌ Erro ao buscar templates: {e.response.text if e.response else e}")
+        except httpx.HTTPError as e:
+            print(f"❌ Erro ao buscar templates: {e}")
             raise
 
     async def send_template(
