@@ -36,20 +36,27 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     
-    yield
-    
-    await mongo_manager.disconnect()
+    # Initialize async dependency factories after DB is connected so they
+    # don't try to access the DB before `mongo_manager.connect()` runs.
+    try:
+        await get_config_service()
+        await get_message_service()
+        await get_contact_service()
+        await get_attendant_service()
+        await get_chat_service()
+        await get_cache()
+        await get_repositories()
+        await get_security()
+        await get_clients()
+        # `get_settings()` is synchronous; call it to ensure settings are loaded
+        get_settings()
+    except Exception:
+        # Ignore initialization errors here; individual endpoints will surface problems.
+        pass
 
-get_config_service()
-get_message_service()
-get_contact_service()
-get_attendant_service()
-get_chat_service()
-get_cache()         # Ensure cache is initialized
-get_repositories()
-get_security() # Ensure repositories are initialized
-get_clients()       # Ensure clients are initialized
-get_settings()
+    yield
+
+    await mongo_manager.disconnect()
 
 from routes.webhook import router as webhook_router
 from routes.attendants import router as attendants_router
