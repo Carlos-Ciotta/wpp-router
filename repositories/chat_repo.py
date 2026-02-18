@@ -2,6 +2,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from domain.chat.chats import  ChatStatus
 from typing import Optional
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 def _serialize_doc(doc: dict) -> dict:
     """Convert MongoDB ObjectId to string for JSON serialization."""
@@ -98,9 +99,16 @@ class ChatRepository:
         return response.modified_count > 0
     
     async def update(self, data:dict, phone_number:str):
-        response = await self._collection.update_one({"phone_number": phone_number}, {"$set": data})
-
-        return response.modified_count > 0
+        # Update and return the updated document so callers receive the new state
+        try:
+            result = await self._collection.find_one_and_update(
+                {"phone_number": phone_number},
+                {"$set": data},
+                return_document=ReturnDocument.AFTER
+            )
+            return _serialize_doc(result)
+        except Exception:
+            return None
     
     async def assign_attendant(self, phone: str, attendant_id: str, category: str):
         response = await self._collection.update_one(
