@@ -76,7 +76,7 @@ def get_clients():
 			phone_id=env.WHATSAPP_PHONE_ID,
 			business_account_id=env.WHATSAPP_BUSINESS_ACCOUNT_ID,
 			wa_token=env.WHATSAPP_TOKEN,
-			repository=get_repositories()["config_repository"],
+            repository=get_repositories()["message_repository"],
 			base_url="https://graph.facebook.com/v24.0",
 			internal_token=env.WHATSAPP_INTERNAL_TOKEN
 		)
