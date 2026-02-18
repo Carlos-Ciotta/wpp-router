@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HT
 from core.dependencies import get_attendant_service, get_security
 from typing import List, Optional, Dict
 from pydantic import BaseModel
-
+from services.attendant_service import AttendantService
 
 fastapi_security = HTTPBearer()
 
@@ -37,7 +37,6 @@ class AttendantRoutes():
         self.router.add_api_route("/", self.create_attendant, methods=["POST"], status_code=status.HTTP_201_CREATED)
         self.router.add_api_route("/login", self.login, methods=["POST"], status_code=status.HTTP_200_OK)
         self.router.add_api_route("/logout", self.logout, methods=["POST"], status_code=status.HTTP_200_OK)
-        self.router.add_api_route("/verify-token", self.verify_token, methods=["POST"], status_code=status.HTTP_200_OK)
         self.router.add_api_route("/", self.list_attendants, methods=["GET"], response_model=List[dict], status_code=status.HTTP_200_OK)
 
     async def create_attendant(
@@ -73,16 +72,9 @@ class AttendantRoutes():
 
     async def logout(self,
         attendant_id: str = Query(..., description="ID do atendente a ser deslogado"),
+        attendant_service: AttendantService = Depends(get_attendant_service)
     ):
-        attendant_service = get_attendant_service()
-        await attendant_service.logout(attendant_id)
-
-    async def verify_token(self,
-        token: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
-        attendant_id: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
-    ):
-        attendant_service = get_attendant_service()
-        token = await attendant_service.verify_token(token, attendant_id)
+        return await attendant_service.logout(attendant_id)
 
     async def list_attendants(self,
         token: HTTPAuthorizationCredentials = Depends(fastapi_security),

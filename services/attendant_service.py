@@ -154,7 +154,7 @@ class AttendantService():
     
     async def logout(self, attendant_id: str):
         try:
-            await self._cache.delete(f"auth_token:{attendant_id}")
+            await self._cache.delete(f"auth_token:{str(attendant_id)}")
             return {"message": "Logout successful"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
