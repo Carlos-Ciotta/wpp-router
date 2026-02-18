@@ -1,10 +1,7 @@
 from fastapi import APIRouter, WebSocket
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from core.dependencies import get_message_service, get_security
 import json
 from core.websocket import manager
-
-fastapi_security = HTTPBearer()
 
 class MessagesRoutes():
     def __init__(self):
