@@ -389,35 +389,34 @@ class ChatService:
     
     async def process_incoming_message(self, message: Any):
         try:
-            match type:
-                case "status":
-                    return None # Status são tratados em outro lugar
-                
-                case "message":
-                    phone = message.get("from") if isinstance(message, dict) else getattr(message, "from", None)
-                    msg_dict = message if isinstance(message, dict) else message.__dict__
-                    profile_name = msg_dict.get("profile", {}).get("name")
-                    await self._ensure_contact_synced(phone, profile_name)
+            # Determine message type from parsed domain model
+            msg_dict = message if isinstance(message, dict) else getattr(message, "__dict__", {})
+            msg_type = msg_dict.get("type")
 
-                    chat = await self.get_last_chat_status(phone)
-                    if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
-                        config = await self.get_cached_config()
-                        return await self._automated_start_new_chat(phone, config=config)
+            if msg_type == "status":
+                return None  # Status são tratados em outro lugar
 
-                    # Gerenciamento de Estado usando Match (Python 3.10+)
-                    status = chat.get("status")
-                    match status:
-                        case ChatStatus.WAITING_MENU.value: # Add .value
-                            await self._handle_menu_selection(chat, msg_dict, config)
-                            await self.update_received_message(phone, msg_dict)
-                        case ChatStatus.ACTIVE.value: # Add .value
-                            await self.update_received_message(phone, msg_dict)
-                        case _: # Handle string fallback if enum lookup fails
-                            if status == "waiting_menu":
-                                await self._handle_menu_selection(chat, msg_dict, config)
-                                await self.update_received_message(phone, msg_dict)
-                            elif status == "active":
-                                await self.update_received_message(phone, msg_dict)
+            if msg_type != "message":
+                return None
+
+            phone = message.get("from") if isinstance(message, dict) else getattr(message, "from", None)
+            profile_name = msg_dict.get("profile", {}).get("name")
+            await self._ensure_contact_synced(phone, profile_name)
+
+            # Always fetch config early because it is used in multiple branches
+            config = await self.get_cached_config()
+
+            chat = await self.get_last_chat_status(phone)
+            if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
+                return await self._automated_start_new_chat(phone, config=config)
+
+            # Gerenciamento de Estado usando Match (Python 3.10+)
+            status = chat.get("status")
+            if status == ChatStatus.WAITING_MENU.value or status == "waiting_menu":
+                await self._handle_menu_selection(chat, msg_dict, config)
+                await self.update_received_message(phone, msg_dict)
+            elif status == ChatStatus.ACTIVE.value or status == "active":
+                await self.update_received_message(phone, msg_dict)
         except Exception as e:
             logging.error(f"Erro ao processar mensagem: {e}")
             return None

@@ -37,12 +37,13 @@ class WhatsAppClient:
         try:
             # Note: requests is synchronous and will block the event loop.
             # Ideally use httpx.AsyncClient or run_in_executor.
-            response = await httpx.post(
-                f"{self.base_url}/{self.phone_id}/messages", # URL base costuma precisar do phone_id
-                headers=self.headers,
-                json=payload,
-                timeout=30
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/{self.phone_id}/messages",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30
+                )
             response.raise_for_status()
             res_data = response.json()
         
@@ -68,7 +69,10 @@ class WhatsAppClient:
     def _sanitize_phone(self, phone: str) -> str:
         """Ajusta formatação do telefone (adiciona 9 para BR se necessário)"""
         # Se for BR (55) e tiver 12 dígitos (55 + 2 DDD + 8 NUM), adiciona o 9
-        if phone and phone.startswith("55") and len(phone) == 12:
+        if not phone:
+            return phone
+        if phone.startswith("55") and len(phone) == 12:
+            # older format without the ninth digit
             return f"{phone[:4]}9{phone[4:]}"
         return phone
 
@@ -86,14 +90,9 @@ class WhatsAppClient:
                 "limit": 100 # Paginação pode ser necessária se houver muitos
             }
             
-            response = await httpx.get(
-                url, 
-                headers=self.headers, 
-                params=params,
-                timeout=30
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers, params=params, timeout=30)
             response.raise_for_status()
-            
             data = response.json()
             return data.get("data", [])
         except httpx.exceptions.RequestException as e:
@@ -436,7 +435,8 @@ class WhatsAppClient:
         """Recupera URL de download"""
         try:
             url = f"https://graph.facebook.com/v24.0/{media_id}"
-            response = await httpx.get(url, headers=self.headers, timeout=30)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers, timeout=30)
             return response.json().get("url")
         except Exception:
             return None
@@ -456,7 +456,8 @@ class WhatsAppClient:
         Requer header Authorization: Bearer {token}
         """
         try:
-            response = await httpx.get(media_url, headers=self.headers, timeout=60)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(media_url, headers=self.headers, timeout=60)
             response.raise_for_status()
             return response.content
         except Exception as e:
