@@ -82,6 +82,6 @@ app.include_router(config_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
-    
+
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)

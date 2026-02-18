@@ -162,7 +162,7 @@ class ChatService:
     async def list_chats(self):
         """Lista todas as sessões de chat."""
         try:
-            return [c async for c in self.chat_repo.get_chats_by_attendant()]
+            return [c async for c in self.chat_repo.get_all_chats()]
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
             return []
