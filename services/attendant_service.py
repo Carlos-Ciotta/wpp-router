@@ -147,7 +147,7 @@ class AttendantService():
                     "name": attendant["name"]
                 }
             )
-            await self._cache.set(f"auth_token:{attendant['_id']}", access_token)
+            await self._cache.set(f"auth_token:{str(attendant['_id'])}", access_token)
             return access_token
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Token generation failed: {str(e)}")
