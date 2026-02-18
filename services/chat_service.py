@@ -420,7 +420,7 @@ class ChatService:
 
             chat = await self.get_last_chat_status(phone)
             if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
-                return await self._automated_start_new_chat(phone, config=config)
+                await self._automated_start_new_chat(phone, config=config)
 
             # Gerenciamento de Estado usando Match (Python 3.10+)
             status = chat.get("status")
@@ -473,7 +473,7 @@ class ChatService:
     async def _automated_start_new_chat(self, phone: str, config: ChatConfig):
         new_chat = Chat(
                 phone_number=phone,
-                status=ChatStatus.ACTIVE.value,
+                status=ChatStatus.WAITING_MENU.value,
                 created_at=int(datetime.now(TZ_BR).timestamp()),
                 last_interaction_at=int(datetime.now(TZ_BR).timestamp()),
                 last_client_interaction_at=int(datetime.now(TZ_BR).timestamp()),
