@@ -69,7 +69,7 @@ class AttendantRoutes():
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return await self._attendant_service.create_token_for_attendant(attendant)
+        return await attendant_service.create_token_for_attendant(attendant)
 
     async def logout(self,
         attendant_id: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
