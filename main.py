@@ -83,5 +83,7 @@ app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
 
+for route in chats_router.routes:
+    print(f"Registered route: {route.path} [{', '.join(route.methods)}]")
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)
