@@ -52,7 +52,7 @@ class ChatService:
         config_data = await self._config_repo.get_config()
         if config_data:
             # Cache de longa duração (ex: 1 hora) para configs que mudam pouco
-            await self._cache.set(cache_key, json.dumps(config_data), expire=3600)
+            await self._cache.set(cache_key, json.dumps(config_data))
             return ChatConfig(**config_data)
         
         raise ValueError("Configuração do sistema não encontrada no banco.")
