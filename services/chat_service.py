@@ -493,6 +493,7 @@ class ChatService:
         )
 
     async def _handle_menu_selection(self, chat: dict, message: dict, config: ChatConfig):
+        print(f"Handling menu selection for chat {chat.get('_id')} with message: {message}")
         # Extração limpa do payload de resposta
         msg_type = message.get("type")
         raw_data = message.get("raw_data", {})
@@ -563,37 +564,51 @@ class ChatService:
             return working_attendants[0]
 
     async def _route_sector(self, phone: str, config: ChatConfig, sector_name: str):
-        # 1. Tenta encontrar atendente vinculado diretamente (normaliza o telefone antes)
+        """
+        Roteia o cliente para um atendente:
+        1. Tenta o atendente fidelizado (se estiver em horário de trabalho).
+        2. Caso contrário, busca o próximo disponível via Round Robin.
+        3. Atualiza o chat com o setor e o atendente final.
+        """
         search_phone = self._normalize_phone(phone)
-        attendant = await self._attendant_service.get_by_clients_and_sector(search_phone, sector_name)
+        attendant = None
         
-        if attendant:
-            # Verifica apenas se está no horário; se não estiver, tenta próximo disponível
-            wh = attendant.get("working_hours")
-            if not self._is_working_hour(wh):
-                next_att = await self._get_next_attendant(sector_name)
-                if next_att:
-                    attendant = next_att
-                else:
-                    return None
+        # 1. Tentar Atendente Fixo/Fidelizado
+        fixed_attendant = await self._attendant_service.get_by_clients_and_sector(search_phone, sector_name)
+        
+        if fixed_attendant and self._is_working_hour(fixed_attendant.get("working_hours")):
+            attendant = fixed_attendant
         else:
-            # 2. Se não tem vínculo, faz rodízio entre disponíveis
+            # 2. Se não tem fidelizado ou está fora de hora, busca o próximo do rodízio
             attendant = await self._get_next_attendant(sector_name)
 
-        # 3. Atribuição
-        attendant_name = attendant.get("name", "Atendente")
-        attendant_id = str(attendant.get("_id"))
-        
-        await self.chat_repo.assign_attendant(phone, attendant_id, sector_name.lower())
-        await self._invalidate_chat_data(phone, attendant_id)
-        
-        # Mensagem de boas vindas
-        welcome_msg = attendant.get("welcome_message")
-        if not welcome_msg:
-            welcome_msg = config.attendant_assigned_message.format(attendant_name=attendant_name)
-            
-        await self.wa_client.send_text(phone, welcome_msg)
+        # Se ninguém puder atender (nem fidelizado, nem equipe disponível)
+        if not attendant:
+            logging.warning(f"Nenhum atendente disponível no setor {sector_name} para {phone}")
+            # Opcional: Enviar mensagem de 'setor offline' aqui
+            return None
 
+        # 3. Preparar dados para atualização
+        attendant_id = str(attendant.get("_id"))
+        attendant_name = attendant.get("name", "Atendente")
+        sector_slug = sector_name.lower()
+
+        # 4. Atualização Única (Atomicidade)
+        # Atualiza status para ACTIVE (se necessário), category para o setor e o attendant_id
+        await self.chat_repo.assign_attendant(
+            phone=phone, 
+            attendant_id=attendant_id, 
+            sector=sector_slug
+        )
+        
+        # Limpa cache para refletir as mudanças no próximo processamento
+        await self._invalidate_chat_data(phone, attendant_id)
+
+        # 5. Notificação de Boas-vindas
+        welcome_msg = attendant.get("welcome_message") or \
+                    config.attendant_assigned_message.format(attendant_name=attendant_name)
+        
+        await self.wa_client.send_text(phone, welcome_msg)
     async def _ensure_contact_synced(self, phone: str, profile_name: str):
         """
         Evita o gargalo de I/O: Só faz upsert se o contato não existir 
