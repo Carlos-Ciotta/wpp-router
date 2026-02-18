@@ -1,4 +1,5 @@
 from domain.attendants.attendant import Attendant
+from fastapi import HTTPException
 from repositories.attendant import AttendantRepository
 from utils.security import Security
 from datetime import datetime
@@ -49,7 +50,6 @@ class AttendantService():
     async def find_by_login(self, login: str):
         try:
             user_id = await self._cache.get(f"attendant:login:{login}")
-
             if user_id:
                 return await self._cache.get(f"attendant:{user_id}")
             
@@ -60,7 +60,8 @@ class AttendantService():
             await self._cache_attendant(user)
             return user
         except Exception as e:
-            raise Exception(f"Error finding attendant by login: {str(e)}")
+            # Se não for erro de negócio, lançamos 500 explicitamente ou deixamos subir
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     async def find_by_id(self, _id: str):
         try:
@@ -75,31 +76,30 @@ class AttendantService():
             await self._cache_attendant(user)
             return user
         except Exception as e:
-            raise Exception(f"Error finding attendant by ID: {str(e)}")
+            # Ajustado para HTTPException 500
+            raise HTTPException(status_code=500, detail=f"Error finding attendant by ID: {str(e)}")
     # ----------------
     # CRUD Operations
     # ----------------
-    async def create_attendant(self, data:dict):
-        try:
-            exists = await self.find_by_login(data["login"])
-            
-            if exists: raise Exception("Attendant with this login already exists.")
+    async def create_attendant(self, data: dict):
+        exists = await self.find_by_login(data["login"])
+        if exists: 
+            # 409 Conflict é o mais adequado para duplicidade
+            raise HTTPException(status_code=409, detail="Attendant with this login already exists.")
 
+        try:
             attendant = Attendant(**data)
             att_dict = attendant.to_dict()
 
-            # Fix Enum serialization if necessary
             if "permission" in att_dict and hasattr(att_dict["permission"], "value"):
                 att_dict["permission"] = att_dict["permission"].value
                 
             result = await self._repository.save(att_dict)
-
             if result:
                 await self._cache_attendant(result)
-            
             return result
         except Exception as e:
-            raise Exception(f"Error creating attendant: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error creating attendant: {str(e)}")
             
     async def authenticate_attendant(self, login: str, password: str):
         # We need a method to find by login in repo
@@ -116,62 +116,81 @@ class AttendantService():
         return attendant.to_dict()
         
     async def create_token_for_attendant(self, attendant: dict):
-        try:
-            exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
+        # 1. Tentar recuperar token do cache
+        exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
 
-            if exists_token:
-                # `exists_token` may be bytes (old redis client) or str; normalize to str
-                if isinstance(exists_token, (bytes, bytearray)):
-                    token_str = exists_token.decode("utf-8")
-                else:
-                    token_str = str(exists_token)
-
+        if exists_token:
+            token_str = exists_token.decode("utf-8") if isinstance(exists_token, (bytes, bytearray)) else str(exists_token)
+            
+            try:
+                # Se o token for inválido, o Security lançará HTTPException(401)
                 verified = await self._security.verify_token(token_str)
-                return token_str if verified.get('_id') == attendant['_id'] else None
-            
-            if not attendant:
-                raise Exception("Attendant not found for token creation.")
-            
-            access_token = self._security.create_token(
+                if verified.get('_id') == attendant['_id']:
+                    return token_str
+            except HTTPException:
+                # Se o token do cache expirou/falhou, apenas ignoramos e geramos um novo
+                pass
+
+        if not attendant:
+            raise HTTPException(status_code=404, detail="Attendant not found.")
+
+        # 2. Gerar novo token
+        try:
+            access_token = await self._security.create_token(
                 payload={
                     "sub": attendant["login"],
-                    "_id":attendant['_id'],
-                    "permission":attendant['permission'],
-                    "type":"access", 
+                    "_id": attendant['_id'],
+                    "permission": attendant['permission'],
+                    "type": "access", 
                     "iat": datetime.now().timestamp(),
                     "exp": self._env.ACCESS_TOKEN_EXPIRE_SECONDS, 
-                    "name": attendant["name"]}
+                    "name": attendant["name"]
+                }
             )
-            # store token dict keyed by the access token so verify_token can lookup
             await self._cache.set(f"auth_token:{attendant['_id']}", access_token)
-
             return access_token
-        
         except Exception as e:
-            raise Exception(f"Error creating token for attendant: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Token generation failed: {str(e)}")
     
-    async def logout(self, attendant_id:str):
+    async def logout(self, attendant_id: str):
         try:
             await self._cache.delete(f"auth_token:{attendant_id}")
-            return
         except Exception as e:
-            raise Exception(f"Error during logout: {e}")
+            raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
         
-    async def update_attendant(self, _id:str, data:dict):
+    async def update_attendant(self, _id: str, data: dict):
         try:
-            return await self._repository.update(_id, data)
+            result = await self._repository.update(_id, data)
+            if not result:
+                raise HTTPException(status_code=404, detail="Attendant not found for update.")
+            
+            # Opcional: Atualizar o cache após o update
+            # await self._cache_attendant(result) 
+            
+            return result
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            raise Exception(f"Error updating attendant: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error updating attendant: {str(e)}")
         
-    async def list_attendants(self, filter:dict = None):
+    async def list_attendants(self, filter: dict = None):
         try:
             return await self._repository.list(filter)
         except Exception as e:
-            raise Exception(f"Error listing attendants: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error listing attendants: {str(e)}")
         
-    async def delete_attendant(self, _id:str):
+    async def delete_attendant(self, _id: str):
         try:
-            return await self._repository.delete(_id)
+            result = await self._repository.delete(_id)
+            if not result:
+                raise HTTPException(status_code=404, detail="Attendant not found for deletion.")
+            
+            # Limpar cache após deletar
+            await self._cache.delete(f"attendant:{_id}")
+            
+            return result
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            raise Exception(f"Error deleting attendant: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error deleting attendant: {str(e)}")
         
