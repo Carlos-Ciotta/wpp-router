@@ -20,8 +20,8 @@ class MessagesRoutes():
         """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
         # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
         await websocket.accept()
-
-        auth_header = websocket.headers.get("authorization")
+        await websocket.send("opa")
+        """auth_header = websocket.headers.get("authorization")
         print(f"DEBUG: Header recebido: {auth_header}")
         if not auth_header:
             await websocket.close(code=1008) # Policy Violation
@@ -79,7 +79,7 @@ class MessagesRoutes():
                     break
         except Exception as e:
             manager.disconnect(attendant_id)
-            return None
+            return None"""
 
 
 _routes = MessagesRoutes()
