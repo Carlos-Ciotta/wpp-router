@@ -9,12 +9,6 @@ from core.indexes import ensure_indexes
 from core.db import mongo_manager
 from core.environment import get_environment
 from core.dependencies import get_clients, get_cache, get_repositories
-from routes.webhook import router as webhook_router
-from routes.attendants import router as attendants_router
-from routes.config import router as config_router
-from routes.chat_routes import router as chats_router
-from routes.messages import router as messages_router
-from routes.contacts import router as contacts_router
 
 env = get_environment()
 
@@ -37,6 +31,14 @@ async def lifespan(app: FastAPI):
     yield
     
     await mongo_manager.disconnect()
+
+
+from routes.webhook import router as webhook_router
+from routes.attendants import router as attendants_router
+from routes.config import router as config_router
+from routes.chat_routes import router as chats_router
+from routes.messages import router as messages_router
+from routes.contacts import router as contacts_router
 
 
 app = FastAPI(title="Whatsapp Cloud API", lifespan=lifespan)
