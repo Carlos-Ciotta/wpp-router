@@ -82,10 +82,6 @@ app.include_router(config_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
-@app.websocket("/test-ws")
-async def test_websocket(websocket: WebSocket):
-    await websocket.accept()
-    await websocket.send_text("Conexão direta funcionou!")
-    await websocket.close()
+    
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)
