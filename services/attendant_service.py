@@ -136,14 +136,16 @@ class AttendantService():
 
         # 2. Gerar novo token
         try:
+            # exp must be a future timestamp (current time + TTL)
+            exp_ts = datetime.now().timestamp() + int(self._env.ACCESS_TOKEN_EXPIRE_SECONDS)
             access_token = await self._security.create_token(
                 payload={
                     "sub": attendant["login"],
                     "_id": str(attendant['_id']),
                     "permission": attendant['permission'],
-                    "type": "access", 
+                    "type": "access",
                     "iat": datetime.now().timestamp(),
-                    "exp": self._env.ACCESS_TOKEN_EXPIRE_SECONDS, 
+                    "exp": exp_ts,
                     "name": attendant["name"]
                 }
             )
