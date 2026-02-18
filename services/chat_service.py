@@ -49,7 +49,7 @@ class ChatService:
             return ChatConfig(**data)
 
         # Busca no repositório (ajustado para usar self._config_repo)
-        config_data = await self._config_repo.get_active_config()
+        config_data = await self._config_repo.get_config()
         if config_data:
             # Cache de longa duração (ex: 1 hora) para configs que mudam pouco
             await self._cache.set(cache_key, json.dumps(config_data), expire=3600)
