@@ -29,7 +29,7 @@ class WebhookRoutes():
         try:
             security = get_security()
             chat_service = get_chat_service()
-            security.verify_permission(token.credentials, ["admin", "user"])
+            await security.verify_permission(token.credentials, ["admin", "user"])
             return await chat_service.list_templates()
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -41,7 +41,7 @@ class WebhookRoutes():
         try:
             security = get_security()
             chat_service = get_chat_service()
-            security.verify_permission(token.credentials, ["admin", "user"])
+            await security.verify_permission(token.credentials, ["admin", "user"])
             templates = await chat_service.sync_templates_from_whatsapp()
             return {"count": len(templates), "message": "Templates sincronizados com sucesso."}
         except Exception as e:

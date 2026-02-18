@@ -25,7 +25,7 @@ class ConfigRoutes():
         """
         security = get_security()
         config_service = get_config_service()
-        security.verify_permission(token.credentials, ["user", "admin"])
+        await security.verify_permission(token.credentials, ["user", "admin"])
 
         return config_service.get_config()
 
@@ -38,7 +38,7 @@ class ConfigRoutes():
         """
         security = get_security()
         config_service = get_config_service()
-        security.verify_permission(token.credentials, ["user", "admin"])
+        await security.verify_permission(token.credentials, ["user", "admin"])
 
         return config_service.save_config(config)
 

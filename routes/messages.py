@@ -39,7 +39,7 @@ class MessagesRoutes():
             token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
             # 4. Validar o token (usando a string limpa)
-            decoded = security.verify_permission(token, required_roles=["admin"])
+            decoded = await security.verify_permission(token, required_roles=["admin", "user"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:

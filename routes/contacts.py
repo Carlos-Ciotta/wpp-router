@@ -32,7 +32,7 @@ class ContactsRoutes():
         try:
             security = get_security()
             contact_service = get_contact_service()
-            security.verify_permission(token.credentials, ["user", "admin"])
+            await security.verify_permission(token.credentials, ["user", "admin"])
             return await contact_service.list_contacts(limit, skip)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -48,7 +48,7 @@ class ContactsRoutes():
         try:
             security = get_security()
             contact_service = get_contact_service()
-            security.verify_permission(token.credentials, ["user", "admin"])
+            await security.verify_permission(token.credentials, ["user", "admin"])
             contact = await contact_service.get_by_phone(phone)
             if not contact:
                 raise HTTPException(status_code=404, detail="Contato não encontrado")
@@ -69,7 +69,7 @@ class ContactsRoutes():
         try:
             security = get_security()
             contact_service = get_contact_service()
-            security.verify_permission(token.credentials, ["admin"])
+            await security.verify_permission(token.credentials, ["admin"])
             await contact_service.delete_contact(phone)
             return {"message": "Contato deletado com sucesso"}
         except Exception as e:
@@ -85,7 +85,7 @@ class ContactsRoutes():
         try:
             security = get_security()
             contact_service = get_contact_service()
-            security.verify_permission(token.credentials, ["admin"])
+            await security.verify_permission(token.credentials, ["admin"])
             result = await contact_service.upsert_contact(contact.model_dump())
             return {"id": str(result), "message": "Contato criado com sucesso"}
         except Exception as e:
