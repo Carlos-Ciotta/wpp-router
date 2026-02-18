@@ -267,9 +267,16 @@ class ChatService:
     
     async def update_received_message(self, phone: str, message: dict):
         """Atualiza banco e cache após receber mensagem."""
+        # Normaliza `text` que pode ser dict {'body': ...} ou string
+        text_val = message.get("text")
+        if isinstance(text_val, dict):
+            text_body = text_val.get("body", "") if message.get("type") == "text" else ""
+        else:
+            text_body = text_val if message.get("type") == "text" and text_val is not None else ""
+
         last_message = {
             "type": message.get("type"),
-            "text": message.get("text", {}).get("body") if message.get("type") == "text" else "",
+            "text": text_body,
             "timestamp": message.get("timestamp"),
             "direction": "incoming"
         }
@@ -281,9 +288,15 @@ class ChatService:
 
     async def update_sent_message(self, phone: str, message: dict):
         """Atualiza banco e cache após enviar mensagem."""
+        text_val = message.get("text")
+        if isinstance(text_val, dict):
+            text_body = text_val.get("body", "Nova mensagem")
+        else:
+            text_body = text_val if text_val is not None else "Nova mensagem"
+
         last_message = {
             "type": message.get("type"),
-            "text": message.get("text", {}).get("body", "Nova mensagem"),
+            "text": text_body,
             "timestamp": message.get("timestamp"),
             "direction": "outgoing"
         }
@@ -389,16 +402,17 @@ class ChatService:
     
     async def process_incoming_message(self, message: Any):
         try:
-            print(f"Processando mensagem: {message}")
             # Determine message type from parsed domain model
             msg_dict = message if isinstance(message, dict) else getattr(message, "__dict__", {})
-            msg_type = msg_dict.get("event_type")
+            msg_type = msg_dict.get("type")
             phone = message.get("from_number") if isinstance(message, dict) else getattr(message, "from_number", None)
-                        
+
             if msg_type == "status_update":
                 return None  # Status são tratados em outro lugar
 
-            profile_name = msg_dict.get("profile", {}).get("name")
+            # `Message` domain objects use `profile_name`; raw webhook may include
+            # `raw_data.profile.name`. Try both sources.
+            profile_name = msg_dict.get("profile_name") or ( (msg_dict.get("raw_data") or {}).get("profile", {}).get("name") )
             await self._ensure_contact_synced(phone, profile_name)
 
             # Always fetch config early because it is used in multiple branches
@@ -542,8 +556,7 @@ class ChatService:
 
     async def _route_sector(self, phone: str, config: ChatConfig, sector_name: str):
         # 1. Tenta encontrar atendente vinculado diretamente
-        search_phone = self._normalize_phone(phone)
-        attendant = await self.attendant_repo.find_by_client_and_sector(search_phone, sector_name)
+        attendant = await self._attendant_service.get_by_clients_and_sector(phone, sector_name)
         
         if attendant:
             # Verifica apenas se está no horário

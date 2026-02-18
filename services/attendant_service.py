@@ -114,7 +114,21 @@ class AttendantService():
             return None
         
         return attendant.to_dict()
-        
+    async def get_by_clients_and_sector(self, phone: str, sector_name: str):
+        try:
+            # 1. Tenta encontrar atendente vinculado diretamente
+            attendant = await self._repository.find_by_client_and_sector(phone, sector_name)
+            if attendant:
+                return attendant
+            
+            # 2. Se não encontrar, tenta por setor
+            attendants_in_sector = await self._repository.find_by_sector(sector_name)
+            if attendants_in_sector:
+                return attendants_in_sector[0]  # Retorna o primeiro encontrado (pode ser melhorado com round-robin ou outro critério)
+
+            return None
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error finding attendant by clients and sector: {str(e)}")
     async def create_token_for_attendant(self, attendant: dict):
         # 1. Tentar recuperar token do cache
         exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
