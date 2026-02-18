@@ -12,9 +12,7 @@ from core.dependencies import get_clients, get_cache, get_repositories
 
 env = get_environment()
 
-get_cache()         # Ensure cache is initialized
-get_repositories() # Ensure repositories are initialized
-get_clients()       # Ensure clients are initialized
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup and shutdown."""
@@ -32,7 +30,9 @@ async def lifespan(app: FastAPI):
     
     await mongo_manager.disconnect()
 
-
+get_cache()         # Ensure cache is initialized
+get_repositories() # Ensure repositories are initialized
+get_clients()       # Ensure clients are initialized
 from routes.webhook import router as webhook_router
 from routes.attendants import router as attendants_router
 from routes.config import router as config_router
