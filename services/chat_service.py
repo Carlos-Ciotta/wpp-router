@@ -389,6 +389,7 @@ class ChatService:
     
     async def process_incoming_message(self, message: Any):
         try:
+            print(f"Processando mensagem: {message}")
             # Determine message type from parsed domain model
             msg_dict = message if isinstance(message, dict) else getattr(message, "__dict__", {})
             msg_type = msg_dict.get("event_type")
