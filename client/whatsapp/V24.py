@@ -2,7 +2,7 @@
 WhatsApp Cloud API v24.0 - Cliente para envio de mensagens
 Documentação: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
 """
-import requests
+import httpx
 from typing import List, Dict, Any, Optional
 from core.environment import get_environment
 from fastapi import APIRouter, HTTPException, Body, Request, Depends
@@ -19,7 +19,7 @@ class WhatsAppClient:
                  wa_token: str , 
                  base_url: str ,
                  internal_token: str ,
-                 repository:MessageRepository):
+                 repository:MessageRepository,):
         self.phone_id = phone_id
         self.business_account_id = business_account_id
         self._repo = repository
@@ -37,7 +37,7 @@ class WhatsAppClient:
         try:
             # Note: requests is synchronous and will block the event loop.
             # Ideally use httpx.AsyncClient or run_in_executor.
-            response = requests.post(
+            response = await httpx.post(
                 f"{self.base_url}/{self.phone_id}/messages", # URL base costuma precisar do phone_id
                 headers=self.headers,
                 json=payload,
@@ -54,14 +54,14 @@ class WhatsAppClient:
             save_payload = payload.copy()
             save_payload.pop("messaging_product", None)
             save_payload.pop("recipient_type", None)
-            save_payload['direction'] = 'outbound'
+            save_payload['direction'] = 'outgoing'
             save_payload['message_id'] = wa_message_id  # <--- AGORA TEM ID!
 
             # 3. Salva no banco com o ID correto
             if wa_message_id:
                 await self._repo.save_messages_bulk([save_payload])
             return response.json()
-        except requests.exceptions.RequestException as e:
+        except httpx.exceptions.RequestException as e:
             print(f"❌ Erro na API WhatsApp: {e.response.text if e.response else e}")
             raise
     
@@ -72,7 +72,7 @@ class WhatsAppClient:
             return f"{phone[:4]}9{phone[4:]}"
         return phone
 
-    def get_templates(self, status: str = "APPROVED") -> List[Dict[str, Any]]:
+    async def get_templates(self, status: str = "APPROVED") -> List[Dict[str, Any]]:
         """
         Busca templates aprovados pela Meta
         
@@ -86,7 +86,7 @@ class WhatsAppClient:
                 "limit": 100 # Paginação pode ser necessária se houver muitos
             }
             
-            response = requests.get(
+            response = await httpx.get(
                 url, 
                 headers=self.headers, 
                 params=params,
@@ -96,7 +96,7 @@ class WhatsAppClient:
             
             data = response.json()
             return data.get("data", [])
-        except requests.exceptions.RequestException as e:
+        except httpx.exceptions.RequestException as e:
             print(f"❌ Erro ao buscar templates: {e.response.text if e.response else e}")
             raise
 
@@ -432,11 +432,11 @@ class WhatsAppClient:
 
     # --- GESTÃO DE MÍDIA ---
 
-    def get_media_url(self, media_id: str) -> Optional[str]:
+    async def get_media_url(self, media_id: str) -> Optional[str]:
         """Recupera URL de download"""
         try:
             url = f"https://graph.facebook.com/v24.0/{media_id}"
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = await httpx.get(url, headers=self.headers, timeout=30)
             return response.json().get("url")
         except Exception:
             return None
@@ -450,20 +450,20 @@ class WhatsAppClient:
         }
         return await self._send_request(payload)
 
-    def download_media(self, media_url: str) -> Optional[bytes]:
+    async def download_media(self, media_url: str) -> Optional[bytes]:
         """
         Baixa o binário da mídia usando a URL obtida.
         Requer header Authorization: Bearer {token}
         """
         try:
-            response = requests.get(media_url, headers=self.headers, timeout=60)
+            response = await httpx.get(media_url, headers=self.headers, timeout=60)
             response.raise_for_status()
             return response.content
         except Exception as e:
             print(f"❌ Erro ao baixar mídia: {e}")
             return None
 
-    def upload_media(self, file_path: str, mime_type: str) -> Optional[str]:
+    async def upload_media(self, file_path: str, mime_type: str) -> Optional[str]:
         """
         Faz upload de arquivo local para WhatsApp -> Retorna ID.
         API: POST /v24.0/{phone_id}/media
@@ -480,7 +480,7 @@ class WhatsAppClient:
                 # Mas precisamos do Authorization. Self.headers tem 'Content-Type': 'application/json', então criamos um novo header
                 headers_upload = {"Authorization": f"Bearer {self.wa_token}"}
                 
-                response = requests.post(
+                response = httpx.post(
                     url, 
                     headers=headers_upload, 
                     files=files, 

@@ -62,7 +62,7 @@ async def get_contact_repository():
 
 async def get_security():
     """Retorna uma instância do Security."""
-    return Security(await get_attendant_service())
+    return Security()
 
 async def get_clients():
 	"""Retorna todos os clients instanciados."""

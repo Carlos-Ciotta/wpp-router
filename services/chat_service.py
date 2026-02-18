@@ -2,15 +2,15 @@ from datetime import datetime, timedelta
 from typing import Optional, Any, Union
 from domain.chat.chats import Chat, ChatStatus
 from repositories.chat_repo import ChatRepository
-from repositories.attendant import AttendantRepository
+from services.attendant_service import AttendantService
 from repositories.config import ConfigRepository
 from repositories.template import TemplateRepository
-from repositories.contact import ContactRepository
+from services.contact_service import ContactService
 from client.whatsapp.V24 import WhatsAppClient
 from domain.config.chat_config import ChatConfig
-from domain.template.template import Template
-from repositories.message import MessageRepository
 
+from typing import List, Dict
+import json
 from bson import ObjectId
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -23,40 +23,112 @@ TZ_BR = ZoneInfo("America/Sao_Paulo")
 class ChatService:
     def __init__(self, wa_client, 
                  chat_repo, 
-                 attendant_repo, 
+                 attendant_service, 
                  config_repo, 
                  template_repo, 
-                 contact_repo, 
+                 contact_service, 
                  cache,
                   chat_cache_key="chat_cache",):
         self.wa_client : WhatsAppClient = wa_client
         self.chat_repo : ChatRepository= chat_repo
         self._config_repo : ConfigRepository = config_repo
-        self.attendant_repo :AttendantRepository= attendant_repo
+        self._attendant_service: AttendantService= attendant_service
         self._template_repo : TemplateRepository = template_repo
-        self._contact_repo : ContactRepository = contact_repo
+        self._contact_service : ContactService = contact_service
         self._cache : Cache = cache
         self._cache_key = chat_cache_key
 
-    # ------------------------
-    # Cache Functions
-    # ------------------------
-
+    # ------
+    # Config Cache
+    # ------
     async def get_cached_config(self) -> ChatConfig:
-        """Evita idas excessivas ao banco de dados."""
-        cached = await self._cache.get(key="chat_config")
+        """Busca configuração no cache ou banco e retorna objeto ChatConfig."""
+        cache_key = "config:global"
+        cached = await self._cache.get(cache_key)
+        
         if cached:
-            return ChatConfig(**cached[0])  # Cache armazena lista de dicts
-        config = await self._config_repo.get_config()
-        # O repositório retorna um dict, não um objeto Pydantic
-        return ChatConfig(**config) if config else ChatConfig()
+            data = json.loads(cached)
+            return ChatConfig(**data)
 
-    async def _invalidate_attendant_cache(self, attendant_id: str):
+        # Busca no repositório (ajustado para usar self._config_repo)
+        config_data = await self._config_repo.get_active_config()
+        if config_data:
+            # Cache de longa duração (ex: 1 hora) para configs que mudam pouco
+            await self._cache.set(cache_key, json.dumps(config_data), expire=3600)
+            return ChatConfig(**config_data)
+        
+        raise ValueError("Configuração do sistema não encontrada no banco.")
+   # ----------------------------------------------------------------
+    # CONTACT CACHE (Utilizando HASH para acesso rápido a campos)
+    # ----------------------------------------------------------------
+    
+    async def get_cached_contact(self, phone: str) -> Optional[Dict]:
+        key = f"contact:{phone}"
+        contact = await self._cache.hgetall(key)
+        if contact:
+            return contact
+        
+        # Se não houver no cache, busca no service (banco)
+        contact = await self._contact_service.find_by_phone(phone)
+        if contact:
+            # Salva como Hash
+            await self._cache.hset(key, contact)
+        return contact
+
+    # ----------------------------------------------------------------
+    # CHAT CACHE (Listagens e Status)
+    # ----------------------------------------------------------------
+
+    async def get_chats_by_attendant(self, attendant_id: str) -> List[Dict]:
+        try:
+            await self._validate_objectid(attendant_id)
+            cache_key = f"chats:attendant:{attendant_id}"
+            
+            # 1. Tenta Cache
+            cached = await self._cache.get(cache_key)
+            if cached:
+                return json.loads(cached) if isinstance(cached, str) else cached
+
+            # 2. Busca Banco
+            chats = await self.chat_repo.get_chats_by_attendant(attendant_id)
+            
+            # 3. Salva no Cache (serializando para string JSON)
+            if chats:
+                await self._cache.set(cache_key, json.dumps(chats))
+            
+            return chats
+        except Exception as e:
+            logging.error(f"Erro ao buscar chats por atendente: {e}")
+            return []
+
+    async def get_last_chat_status(self, phone: str) -> Optional[Dict]:
+        """Retorna o objeto do último chat, priorizando o cache."""
+        cache_key = f"chat:last:{phone}"
+        
+        cached = await self._cache.get(cache_key)
+        if cached:
+            return json.loads(cached) if isinstance(cached, str) else cached
+
+        chat = await self.chat_repo.get_last_chat(phone)
+        if chat:
+            await self._cache.set(cache_key, json.dumps(chat))
+        return chat
+
+    # ----------------------------------------------------------------
+    # INVALIDAÇÃO (Gatilhos de mudança de estado)
+    # ----------------------------------------------------------------
+
+    async def _invalidate_chat_data(self, phone: str, attendant_id: Optional[str] = None):
+        """Limpa o cache relacionado quando um chat muda de estado ou atendente."""
+        # Limpa o último chat do cliente
+        await self._cache.delete(f"chat:last:{phone}")
+        
+        # Se soubermos o atendente, limpamos a lista dele
         if attendant_id:
-            try:
-                await self._cache.delete(f"chats:{attendant_id}")
-            except Exception as e:
-                logging.error(f"Erro ao invalidar cache do atendente {attendant_id}: {e}")
+            await self._cache.delete(f"chats:attendant:{attendant_id}")
+        
+        # Alternativa: Se houver muitos atendentes, pode usar o prefixo
+        # await self._cache.invalidate_prefix("chats:attendant:")
 
     # ------------------------
     # Template Operations
@@ -88,38 +160,11 @@ class ChatService:
     # ------------------------
     # Query operations
     # ------------------------
-    async def get_chats_by_attendant(self, attendant_id: str):
-        try:
-            await self._validate_objectid(attendant_id)
-            if self._cache.ensure:
-                cached = await self._cache.get(f"chats:{attendant_id}")
-                if cached:
-                    return cached
-            chats = []
-            async for s in self.chat_repo.get_chats_by_attendant(attendant_id):
-                if hasattr(s, 'to_dict'):
-                    chats.append(s.to_dict())
-                else:
-                    chats.append(s)
-            await self._cache.set(f"chats:{attendant_id}", chats)
-            return chats
-        except ValueError as ve:
-            logging.error(f"Erro de validação: {ve}")
-            return []
-        except Exception as e:
-            logging.error(f"Erro ao buscar sessões por atendente: {e}")
-            return []
         
     async def list_chats(self):
         """Lista todas as sessões de chat."""
         try:
-            chats = []
-            async for s in self.chat_repo.get_all_chats():
-                if hasattr(s, 'to_dict'):
-                    chats.append(s.to_dict())
-                else:
-                    chats.append(s)
-            return chats
+            return [c async for c in self.chat_repo.get_chats_by_attendant()]
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
             return []
@@ -130,47 +175,125 @@ class ChatService:
 
     async def send_text_message(self, phone: str, text: str):
         """Envia mensagem de texto validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-        
-        response = await self.wa_client.send_text(phone, text)
-        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
-
+        try:
+            if not await self.can_send_free_message(phone):
+                raise ValueError("Janela de 24h fechada. Envie um Template Message.")
+            
+            response = await self.wa_client.send_text(phone, text)
+            await self.update_sent_message(phone, {"type": "text", 
+                                                   "text": {"body": text}, 
+                                                   "timestamp": int(datetime.now(TZ_BR).timestamp())})
+            return response
+        except ValueError as ve:
+            logging.warning(f"Validação ao enviar mensagem para {phone}: {ve}")
+            raise ve
     async def send_image_message(self, phone: str, image_url: str, caption: str = None):
         """Envia imagem validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = await self.wa_client.send_image(phone, image_url, caption=caption)
-        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
+        try:
+            if not await self.can_send_free_message(phone):
+                raise ValueError("Janela de 24h fechada. Envie um Template Message.")
+                
+            response = await self.wa_client.send_image(phone, image_url, caption=caption)
+            await self.update_sent_message(phone, {"type": "image",
+                                                    "text": {"body": caption} if caption else {},
+                                                    "timestamp": int(datetime.now(TZ_BR).timestamp())})
+            return response
+        
+        except ValueError as ve:
+            logging.warning(f"Validação ao enviar imagem para {phone}: {ve}")
+            raise ve
 
     async def send_video_message(self, phone: str, video_url: str, caption: str = None):
         """Envia vídeo validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = await self.wa_client.send_video(phone, video_url, caption=caption)
-        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
+        try:
+            if not await self.can_send_free_message(phone):
+                raise ValueError("Janela de 24h fechada. Envie um Template Message.")
+                
+            response = await self.wa_client.send_video(phone, video_url, caption=caption)
+            await self.update_sent_message(phone, {"type": "video",
+                                                    "text": {"body": caption} if caption else {},
+                                                    "timestamp": int(datetime.now(TZ_BR).timestamp())})
+            return response
+        
+        except ValueError as ve:
+            logging.warning(f"Validação ao enviar vídeo para {phone}: {ve}")
+            raise ve
 
     async def send_document_message(self, phone: str, document_url: str, caption: str = None, filename: str = None):
         """Envia documento validando janela de 24h e atualizando interação."""
-        if not await self.can_send_free_message(phone):
-            raise ValueError("Janela de 24h fechada. Envie um Template Message.")
-            
-        response = await self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
-        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
+        try:
+            if not await self.can_send_free_message(phone):
+                raise ValueError("Janela de 24h fechada. Envie um Template Message.")
+                
+            response = await self.wa_client.send_document(phone, document_url, caption=caption, filename=filename)
+            await self.update_sent_message(phone, {"type": "document",
+                                                    "text": {"body": caption} if caption else {},
+                                                    "timestamp": int(datetime.now(TZ_BR).timestamp())})
+            return response
+        
+        except ValueError as ve:
+            logging.warning(f"Validação ao enviar documento para {phone}: {ve}")
+            raise ve
 
     async def send_template_message(self, phone: str, template_name: str, language_code: str = "pt_BR", components: list = None):
         """Envia mensagem de template (HSM)."""
-        response = await self.wa_client.send_template(phone, template_name, language_code, components)
-        # Templates podem ser enviados fora da janela de 24h, então atualizamos a interação
-        await self.chat_repo.update({"last_interaction_at": datetime.now(TZ_BR).timestamp()}, phone)
-        return response
+        try:
+            response = await self.wa_client.send_template(phone, template_name, language_code, components)
+            # Templates podem ser enviados fora da janela de 24h, então atualizamos a interação
+            await self.update_sent_message(phone, {"type": "template",
+                                                    "text": {"body": f"Template: {template_name}"},
+                                                    "timestamp": int(datetime.now(TZ_BR).timestamp())})
+            return response
+        
+        except Exception as e:
+            logging.error(f"Erro ao enviar template para {phone}: {e}")
+            raise ValueError("Não foi possível enviar a mensagem de template. Tente novamente mais tarde.")
 
+    # ------------------------
+    # CRUD Operations
+    # ------------------------
+    async def _update_chat_state(self, phone: str, update_data: dict):
+        """
+        Garante que Banco e Cache estejam SEMPRE iguais.
+        Resolve o problema de 'Stale Data'.
+        """
+        # 1. Atualiza o banco (o repositório deve retornar o objeto atualizado)
+        updated_chat = await self.chat_repo.update(data=update_data, phone_number=phone)
+        
+        if updated_chat:
+            # 2. Atualiza o cache imediatamente
+            cache_key = f"chat:last:{phone}"
+            await self._cache.set(cache_key, json.dumps(updated_chat))
+        
+        return updated_chat
+    
+    async def update_received_message(self, phone: str, message: dict):
+        """Atualiza banco e cache após receber mensagem."""
+        last_message = {
+            "type": message.get("type"),
+            "text": message.get("text", {}).get("body") if message.get("type") == "text" else "",
+            "timestamp": message.get("timestamp"),
+            "direction": "incoming"
+        }
+        data = {
+            "last_client_interaction_at": int(datetime.now(TZ_BR).timestamp()),
+            "last_message": last_message
+        }
+        return await self._update_chat_state(phone, data)
+
+    async def update_sent_message(self, phone: str, message: dict):
+        """Atualiza banco e cache após enviar mensagem."""
+        last_message = {
+            "type": message.get("type"),
+            "text": message.get("text", {}).get("body", "Nova mensagem"),
+            "timestamp": message.get("timestamp"),
+            "direction": "outgoing"
+        }
+        data = {
+            "last_interaction_at": int(datetime.now(TZ_BR).timestamp()),
+            "last_message": last_message
+        }
+        return await self._update_chat_state(phone, data)
     # ------------------------
     # Chat Managment
     # ------------------------
@@ -179,10 +302,9 @@ class ChatService:
         """Inicia uma nova sessão de chat para um cliente."""
         # 1. Verifica se já tem sessão ativa
         try:
-            chat = await self.chat_repo.get_last_chat(phone)
+            chat = await self.get_last_chat_status(phone)
             if chat and (chat.get("status") == ChatStatus.ACTIVE.value or chat.get("status") == ChatStatus.WAITING_MENU.value):
                 raise ValueError("Cliente já possui uma sessão ativa ou está no menu de espera")
-            
 
             # 2. Cria nova sessão
             new_chat = Chat(
@@ -190,13 +312,16 @@ class ChatService:
                 attendant_id=attendant_id,
                 category=category,
                 status=ChatStatus.ACTIVE.value,
-                created_at=datetime.now(TZ_BR).timestamp(),
-                last_interaction_at=datetime.now(TZ_BR).timestamp()
-            )
-            await self.chat_repo.create_chat(new_chat.to_dict())
+                created_at=int(datetime.now(TZ_BR).timestamp()),
+                last_interaction_at=int(datetime.now(TZ_BR).timestamp()),
+                last_client_interaction_at=int(datetime.now(TZ_BR).timestamp()),
+            ).to_dict()
+            await self.chat_repo.create_chat(new_chat)
+
             await self.set_active_chats(phone=phone)
             await self._invalidate_attendant_cache(attendant_id)
 
+            await self._invalidate_chat_data(phone, attendant_id)
             return new_chat
         except Exception as e:
             logging.error(f"Erro ao iniciar chat: {e}")
@@ -205,20 +330,20 @@ class ChatService:
     async def transfer_chat(self, phone: str, new_attendant_id: str):
         """Transfere o atendimento para outro atendente."""
         # 1. Verifica se o novo atendente existe
-        new_attendant = await self.attendant_repo.get_by_id(new_attendant_id)
+        new_attendant = await self._attendant_service.find_by_id(new_attendant_id)
         if not new_attendant:
             raise ValueError("Novo atendente não encontrado.")
 
         # 2. Verifica se tem sessão ativa
-        chat = await self.chat_repo.get_last_chat(phone = phone)
+        chat = await self.get_last_chat_status(phone = phone)
 
-        if not chat or not chat.get("status") == ChatStatus.ACTIVE.value:
+        if not chat or not (chat.get("status") == ChatStatus.ACTIVE.value or chat.get("status") == ChatStatus.WAITING_MENU.value):
             raise ValueError("Cliente não possui sessão ativa para transferir.")
             
         old_attendant_id = chat.get("attendant_id")
-        sector = new_attendant.get("sector")
+        category = new_attendant.get("category")
         
-        assing = await self.chat_repo.assign_attendant(phone, new_attendant_id, sector)
+        assing = await self.chat_repo.assign_attendant(phone, new_attendant_id, category)
         
         await self._invalidate_attendant_cache(new_attendant_id)
         if old_attendant_id:
@@ -228,15 +353,19 @@ class ChatService:
 
     async def finish_chat(self, phone: str):
         """Finaliza a sessão ativa do cliente."""
-        chat = await self.chat_repo.get_last_chat(phone)
-        attendant_id = chat.get("attendant_id") if chat else None
+        try:
+            chat = await self.get_last_chat_status(phone)
+            if not chat:
+                raise ValueError("Sessão não encontrada.")
 
-        await self.chat_repo.close_chat(phone)
-        
-        if attendant_id:
-            await self._invalidate_attendant_cache(attendant_id)
-
-        return {"message": "Sessão finalizada com sucesso."}
+            await self.chat_repo.close_chat(phone)
+            
+            # GATILHO CACHE: Remove do cache pois o status mudou
+            await self._invalidate_chat_data(phone, chat.get("attendant_id"))
+            return {"message": "Finalizado"}
+        except Exception as e:
+            logging.error(f"Erro ao finalizar chat para {phone}: {e}")
+            raise ValueError("Não foi possível finalizar a sessão. Tente novamente mais tarde.")
 
     async def can_send_free_message(self, phone: str) -> bool:
         """
@@ -246,7 +375,7 @@ class ChatService:
         - Se dentro de 24h: Janela aberta (True)
         """
         # 1. Busca sessão ativa ou última sessão
-        chat = await self.chat_repo.get_last_chat(phone)
+        chat = await self.get_last_chat_status(phone)
 
         if not chat:
             return False # Nunca houve contato
@@ -255,67 +384,48 @@ class ChatService:
         if not last_interaction:
             return False
 
-        if int(last_interaction) < datetime.now(TZ_BR).timestamp() - 24*3600:
+        if int(last_interaction) < int(datetime.now(TZ_BR).timestamp() - 24*3600):
             return False
         
         return True
     
     async def process_incoming_message(self, message: Any):
-        # Extração de dados compatível com dict ou Objeto Message
-        if hasattr(message, "from_number"): 
-            phone = message.from_number
-            msg_type = message.type
-            profile_name = message.profile_name
-            # Captura o texto para o objeto se ele existir
-            text_body = message.text if hasattr(message, "text") else ""
-            timestamp = float(message.timestamp) if message.timestamp else datetime.now(TZ_BR).timestamp()
-            msg_dict = message.to_dict() if hasattr(message, "to_dict") else message.__dict__
-        else: 
-            phone = message.get("from_number") or message.get("from")
-            msg_type = message.get("type")
-            profile_name = message.get("profile_name") or message.get("profile", {}).get("name")
-            # No seu log, o texto está na chave 'text' diretamente ou dentro de 'raw_data'
-            text_body = message.get("text") or message.get("raw_data", {}).get("text", {}).get("body", "")
-            timestamp = float(message.get("timestamp") or datetime.now(TZ_BR).timestamp())
-            msg_dict = {**message, "text_body": text_body} # Injeta o texto limpo aqui
-
-        if not phone or msg_type == "status_update":
-            return False
-
-        # 1. Atualizar ou Criar Contato
         try:
-             await self._contact_repo.update_contact(
-                 phone=phone,
-                 name=profile_name,
-                 timestamp=timestamp
-             )
+            match type:
+                case "status":
+                    return None # Status são tratados em outro lugar
+                
+                case "message":
+                    phone = message.get("from") if isinstance(message, dict) else getattr(message, "from", None)
+                    msg_dict = message if isinstance(message, dict) else message.__dict__
+                    profile_name = msg_dict.get("profile", {}).get("name")
+                    await self._ensure_contact_synced(phone, profile_name)
+
+                    chat = await self.get_last_chat_status(phone)
+                    if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
+                        config = await self.get_cached_config()
+                        return await self._automated_start_new_chat(phone, config=config)
+
+                    # Gerenciamento de Estado usando Match (Python 3.10+)
+                    status = chat.get("status")
+                    match status:
+                        case ChatStatus.WAITING_MENU.value: # Add .value
+                            await self._handle_menu_selection(chat, msg_dict, config)
+                            await self.update_received_message(phone, msg_dict)
+                        case ChatStatus.ACTIVE.value: # Add .value
+                            await self.update_received_message(phone, msg_dict)
+                        case _: # Handle string fallback if enum lookup fails
+                            if status == "waiting_menu":
+                                await self._handle_menu_selection(chat, msg_dict, config)
+                                await self.update_received_message(phone, msg_dict)
+                            elif status == "active":
+                                await self.update_received_message(phone, msg_dict)
         except Exception as e:
-             logging.error(f"Erro ao salvar contato {phone}: {e}")
-
-        config = await self.get_cached_config()
-        chat = await self.chat_repo.get_last_chat(phone=phone)
-        
-        # Se não existe sessao ou está fechada -> Inicia nova
-        if not chat or chat.get("status") not in [ChatStatus.ACTIVE.value, ChatStatus.WAITING_MENU.value]:
-            return await self._automated_start_new_chat(phone, config)
-
-        # Gerenciamento de Estado usando Match (Python 3.10+)
-        status = chat.get("status")
-        match status:
-            case ChatStatus.WAITING_MENU.value: # Add .value
-                await self._handle_menu_selection(chat, msg_dict, config)
-            case ChatStatus.ACTIVE.value: # Add .value
-                await self.chat_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
-            case _: # Handle string fallback if enum lookup fails
-                if status == "waiting_menu":
-                    await self._handle_menu_selection(chat, msg_dict, config)
-                elif status == "active":
-                    await self.chat_repo.update(data={"last_client_interaction_at": datetime.now(TZ_BR).timestamp()}, phone_number=phone)
-    
+            logging.error(f"Erro ao processar mensagem: {e}")
+            return None
     # -----------------------
     # Helpers
     # -----------------------
-
     async def _validate_objectid(self, id_str: str):
         try:
             ObjectId(id_str)
@@ -345,12 +455,12 @@ class ChatService:
     
     async def _automated_start_new_chat(self, phone: str, config: ChatConfig):
         new_chat = Chat(
-                                phone_number=phone,
-                                status=ChatStatus.WAITING_MENU.value,
-                                created_at=datetime.now(TZ_BR).timestamp(),
-                                last_client_interaction_at=datetime.now(TZ_BR).timestamp(),
-                                last_interaction_at=datetime.now(TZ_BR).timestamp(),
-                                )
+                phone_number=phone,
+                status=ChatStatus.ACTIVE.value,
+                created_at=int(datetime.now(TZ_BR).timestamp()),
+                last_interaction_at=int(datetime.now(TZ_BR).timestamp()),
+                last_client_interaction_at=int(datetime.now(TZ_BR).timestamp()),
+            )
         await self.chat_repo.create_chat(new_chat.to_dict())
         # Removed set_active_chats which was undefined
         
@@ -401,7 +511,7 @@ class ChatService:
 
     async def _get_next_attendant(self, sector: str) -> Optional[dict]:
         # 1. Busca todos atendentes do setor
-        all_attendants = await self.attendant_repo.list({"sector": sector})
+        all_attendants = await self._attendant_service.list_attendants({"sector": sector})
         
         # 2. Filtra por horário de trabalho
         working_attendants = [
@@ -459,7 +569,7 @@ class ChatService:
         attendant_id = str(attendant.get("_id"))
         
         await self.chat_repo.assign_attendant(phone, attendant_id, sector_name.lower())
-        await self._invalidate_attendant_cache(attendant_id)
+        await self._invalidate_chat_data(phone, attendant_id)
         
         # Mensagem de boas vindas
         welcome_msg = attendant.get("welcome_message")
@@ -467,3 +577,25 @@ class ChatService:
             welcome_msg = config.attendant_assigned_message.format(attendant_name=attendant_name)
             
         await self.wa_client.send_text(phone, welcome_msg)
+
+    async def _ensure_contact_synced(self, phone: str, profile_name: str):
+        """
+        Evita o gargalo de I/O: Só faz upsert se o contato não existir 
+        ou se o nome de perfil mudou.
+        """
+        contact_key = f"contact:{phone}"
+        # hgetall retorna {} se não existir
+        cached_contact = await self._cache.hgetall(contact_key)
+
+        # Se o nome é o mesmo, não faz nada (Economia de DB)
+        if cached_contact and cached_contact.get("name") == profile_name:
+            return cached_contact
+
+        # Caso contrário, atualiza banco e cache
+        contact = await self._contact_service.upsert_contact(
+            phone=phone,
+            name=profile_name,
+            timestamp=int(datetime.now(TZ_BR).timestamp())
+        )
+        await self._cache.hset(contact_key, contact)
+        return contact
