@@ -120,8 +120,14 @@ class AttendantService():
             exists_token = await self._cache.get(f"auth_token:{attendant['_id']}")
 
             if exists_token:
-                verified = await self._security.verify_token(exists_token.decode("utf-8"))
-                return exists_token.decode("utf-8") if verified['_id'] == attendant['_id'] else None
+                # `exists_token` may be bytes (old redis client) or str; normalize to str
+                if isinstance(exists_token, (bytes, bytearray)):
+                    token_str = exists_token.decode("utf-8")
+                else:
+                    token_str = str(exists_token)
+
+                verified = await self._security.verify_token(token_str)
+                return token_str if verified.get('_id') == attendant['_id'] else None
             
             if not attendant:
                 raise Exception("Attendant not found for token creation.")
@@ -149,7 +155,7 @@ class AttendantService():
             await self._cache.delete(f"auth_token:{attendant_id}")
             return
         except Exception as e:
-            raise ("Error during logout: ", e)
+            raise Exception(f"Error during logout: {e}")
         
     async def update_attendant(self, _id:str, data:dict):
         try:
