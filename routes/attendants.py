@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
-from services.attendant_service import AttendantService
 from core.dependencies import get_attendant_service, get_security
 from typing import List, Optional, Dict
 from pydantic import BaseModel

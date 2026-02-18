@@ -19,9 +19,9 @@ async def lifespan(app: FastAPI):
     
     # Startup s
     await mongo_manager.connect()
-    get_cache()         # Ensure cache is initialized
-    get_repositories() # Ensure repositories are initialized
-    get_clients()       # Ensure clients are initialized
+    await get_cache()         # Ensure cache is initialized
+    await get_repositories() # Ensure repositories are initialized
+    await get_clients()       # Ensure clients are initialized
     try:
         db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
         await ensure_indexes(db)

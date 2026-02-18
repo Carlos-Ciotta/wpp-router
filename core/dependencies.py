@@ -28,16 +28,16 @@ def get_settings():
 env = get_environment()
 
 
-def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
+async def get_db_collection(collection_name: str) -> AsyncIOMotorCollection:
 	"""Retorna uma coleção do MongoDB."""
 	db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
 	return db[collection_name]
 
-def get_cache():
+async def get_cache():
 	"""Retorna uma instância do cache."""
 	return Cache(env.REDIS_URL)
 
-def get_repositories():
+async def get_repositories():
     """Retorna todas as instâncias dos repositórios."""
     return {
         "message_repository": MessageRepository(
@@ -60,16 +60,16 @@ def get_repositories():
         )
     }
 
-def get_security():
+async def get_security():
     """Retorna uma instância do Security."""
     return Security()
 
-def get_config_service():
+async def get_config_service():
     """Retorna uma instância do ConfigService."""
     return ConfigService(
         repo=(get_repositories())["config_repository"]
     )
-def get_clients():
+async def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {
 		"whatsapp": WhatsAppClient(
@@ -81,20 +81,20 @@ def get_clients():
 			internal_token=env.WHATSAPP_INTERNAL_TOKEN
 		)
 	}
-def get_attendant_service():
+async def get_attendant_service():
     """Retorna uma instância do AttendantService."""
     return AttendantService(
         attendant_repo=(get_repositories())["attendant_repository"],
         cache=get_cache()
     )
-def get_contact_service():
+async def get_contact_service():
     """Retorna uma instância do ContactService."""
     return ContactService(
         contact_repo=(get_repositories())["contact_repository"],
         cache=get_cache(),
         security=get_security()
     )
-def get_chat_service():
+async def get_chat_service():
     """Retorna chat service"""
     return ChatService(
             wa_client=(get_clients())["whatsapp"],
@@ -106,7 +106,7 @@ def get_chat_service():
             cache=get_cache()
     )
 
-def get_message_service():
+async def get_message_service():
     """Retorna message service"""
     return MessageService(
         message_repo=(get_repositories())["message_repository"],
