@@ -25,7 +25,7 @@ class MessagesRoutes():
         await websocket.accept()
 
         auth_header = websocket.headers.get("authorization")
-
+        print(f"DEBUG: Header recebido: {auth_header}")
         if not auth_header:
             await websocket.close(code=1008) # Policy Violation
             return None
