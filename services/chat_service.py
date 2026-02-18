@@ -592,5 +592,6 @@ class ChatService:
             name=profile_name,
             timestamp=int(datetime.now(TZ_BR).timestamp())
         )
-        await self._cache.hset(contact_key, contact)
+        if contact:
+            await self._cache.hset(contact_key, contact)
         return contact

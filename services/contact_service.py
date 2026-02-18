@@ -8,6 +8,8 @@ class ContactService:
         """Cria ou atualiza um contato."""
         try:
             await self._contact_repo.update_contact(phone, name, timestamp)
+            # Return the stored contact for callers that expect the upsert result
+            return await self._contact_repo.get_by_phone(phone)
         except Exception as e:
             print(f"Erro ao upsertar contato {phone}: {e}")
 
