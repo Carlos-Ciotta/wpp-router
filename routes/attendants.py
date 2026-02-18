@@ -50,7 +50,7 @@ class AttendantRoutes():
         """
         security = get_security()
         attendant_service = get_attendant_service()
-        security.verify_permissions(token.credentials, ["admin"])
+        security.verify_permission(token.credentials, ["admin"])
         result = await attendant_service.create_attendant(attendant.model_dump())
         return {"id": str(result), "message": "Attendant created successfully"}
 
@@ -92,7 +92,7 @@ class AttendantRoutes():
         """
         security = get_security()
         attendant_service = get_attendant_service()
-        security.verify_permissions(token.credentials, ["admin"])
+        security.verify_permission(token.credentials, ["admin"])
         attendants = await attendant_service.list_attendants()
         for att in attendants:
             if "_id" in att:
