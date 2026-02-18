@@ -84,15 +84,14 @@ def get_clients():
 def get_attendant_service():
     """Retorna uma instância do AttendantService."""
     return AttendantService(
-        attendant_repo=(get_repositories())["attendant_repository"],
-        cache=get_cache()
+        repository=(get_repositories())["attendant_repository"],
+        cache=get_cache(),
+        security=get_security()
     )
 def get_contact_service():
     """Retorna uma instância do ContactService."""
     return ContactService(
-        contact_repo=(get_repositories())["contact_repository"],
-        cache=get_cache(),
-        security=get_security()
+        contact_repository=(get_repositories())["contact_repository"]
     )
 def get_chat_service():
     """Retorna chat service"""
@@ -109,7 +108,5 @@ def get_chat_service():
 def get_message_service():
     """Retorna message service"""
     return MessageService(
-        message_repo=(get_repositories())["message_repository"],
-        chat_service=get_chat_service(),
-        cache=get_cache()
+        message_repository=(get_repositories())["message_repository"],
     )
