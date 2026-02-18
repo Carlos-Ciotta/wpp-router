@@ -10,23 +10,10 @@ fastapi_security = HTTPBearer()
 class WebhookRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
-        # Do not call async dependency factories at import time.
-        # Route handlers receive required objects via FastAPI `Depends`.
-        self._security = None
-        self._client = None
-        self._chat_service = None
+        self._security = get_security()
+        self._client = get_clients()["whatsapp"]
+        self._chat_service = get_chat_service()
         self._register_routes()
-
-    async def get_whatsapp_client(self) -> WhatsAppClient:
-        """Dependency para obter o client do WhatsApp."""
-        clients = await get_clients()
-        return clients["whatsapp"]
-
-
-async def get_whatsapp_client() -> WhatsAppClient:
-    """Module-level dependency to obtain the WhatsApp client."""
-    clients = await get_clients()
-    return clients["whatsapp"]
 
     def _register_routes(self):
         self.router.add_api_route("/templates", self.list_templates, methods=["GET"])
@@ -36,49 +23,43 @@ async def get_whatsapp_client() -> WhatsAppClient:
 
     async def list_templates(self,
         token: HTTPAuthorizationCredentials = Depends(fastapi_security),
-        security = Depends(get_security),
-        chat_service = Depends(get_chat_service),
     ):
         """Lista templates do repositório local."""
         try:
-            security.verify_permission(token.credentials, ["admin", "user"])
-            return await chat_service.list_templates()
+            self._security.verify_permission(token.credentials, ["admin", "user"])
+            return await self._chat_service.list_templates()
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
     async def sync_templates(self,
         token: HTTPAuthorizationCredentials = Depends(fastapi_security),
-        security = Depends(get_security),
-        chat_service = Depends(get_chat_service),
     ):
         """Força sincronização de templates do WhatsApp para o repositório local."""
         try:
-            security.verify_permission(token.credentials, ["admin", "user"])
-            templates = await chat_service.sync_templates_from_whatsapp()
+            self._security.verify_permission(token.credentials, ["admin", "user"])
+            templates = await self._chat_service.sync_templates_from_whatsapp()
             return {"count": len(templates), "message": "Templates sincronizados com sucesso."}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    async def verify_webhook(self, request: Request, client: WhatsAppClient = Depends(get_whatsapp_client)):
+    async def verify_webhook(self, request: Request,):
         """Verificação do webhook (GET)"""
-        return await client.verify_webhook(request)
+        return await self._client.verify_webhook(request)
 
     async def receive_webhook(
         self,
         request: Request,
-        client: WhatsAppClient = Depends(get_whatsapp_client),
-        chat_service = Depends(get_chat_service),
     ):
         """Recebimento de notificações (POST)"""
         try:
             data = await request.json()
             
             # O processamento e salvamento é feito pelo client/repo
-            messages = await client.process_webhook(data)
+            messages = await self._client.process_webhook(data)
             
             # Processamento da lógica de chat (Automação, Menus, Atribuição)
             for msg in messages:
-                await chat_service.process_incoming_message(msg)
+                await self._chat_service.process_incoming_message(msg)
             
             # Log simplificado
             if messages:
