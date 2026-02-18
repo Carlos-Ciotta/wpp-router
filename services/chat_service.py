@@ -598,7 +598,7 @@ class ChatService:
         await self.chat_repo.assign_attendant(
             phone=phone, 
             attendant_id=attendant_id, 
-            sector=sector_slug
+            category=sector_slug
         )
         
         # Limpa cache para refletir as mudanças no próximo processamento
