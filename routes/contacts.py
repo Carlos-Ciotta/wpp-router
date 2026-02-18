@@ -22,8 +22,8 @@ class ContactsRoutes():
     
     async def list_contacts(
         self,
-        limit: int = Query(...,default = 300, description="Limite de contatos"),
-        skip: int = Query(...,default = 0, description="Número de contatos a pular"),
+        limit: int = Query(default=300, description="Limite de contatos"),
+        skip: int = Query(default=0, description="Número de contatos a pular"),
         token: HTTPAuthorizationCredentials = Depends(fastapi_security),
     ):
         """
