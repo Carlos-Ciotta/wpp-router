@@ -2,7 +2,9 @@
 from core.environment import get_environment
 from fastapi import HTTPException
 from jose import jwt,JWTError
+from core.dependencies import get_cache
 
+cache = get_cache()
 class Security():
     def __init__(self):
         self._env = get_environment()
@@ -21,9 +23,11 @@ class Security():
         try:
             # Decodifica e verifica assinatura, expiração (exp) e not before (nbf)
             decoded = jwt.decode(token, self._env.SECRET_KEY, algorithms=self._env.ALGORITHM)
-            
-            print("Token é válido!")
+            exists = await cache.get(f"auth_token:{str(decoded.get('_id'))}")
 
+            if not exists:
+                raise HTTPException(401, "Invalid Token")
+            
             return decoded
         
         except JWTError as e:
