@@ -26,7 +26,7 @@ class AttendantService():
         await self._cache.hset(
             f"attendant:{user_id}",
             mapping={
-                "_id": user["_id"],
+                "_id": str(user["_id"]),
                 "name": user["name"],
                 "login": user["login"],
                 "password": user["password"],
@@ -139,7 +139,7 @@ class AttendantService():
             access_token = await self._security.create_token(
                 payload={
                     "sub": attendant["login"],
-                    "_id": attendant['_id'],
+                    "_id": str(attendant['_id']),
                     "permission": attendant['permission'],
                     "type": "access", 
                     "iat": datetime.now().timestamp(),
