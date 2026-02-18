@@ -8,7 +8,17 @@ from contextlib import asynccontextmanager
 from core.indexes import ensure_indexes
 from core.db import mongo_manager
 from core.environment import get_environment
-from core.dependencies import get_clients, get_cache, get_repositories
+from core.dependencies import (get_clients,
+                                get_cache,
+                                get_repositories,
+                                get_security,
+                                get_chat_service, 
+                                get_config_service,
+                                get_attendant_service,
+                                get_contact_service,
+                                get_db_collection,
+                                get_message_service,
+                                get_settings)
 
 env = get_environment()
 
@@ -30,9 +40,18 @@ async def lifespan(app: FastAPI):
     
     await mongo_manager.disconnect()
 
+get_db_collection()
+get_config_service()
+get_message_service()
+get_contact_service()
+get_attendant_service()
+get_chat_service()
 get_cache()         # Ensure cache is initialized
-get_repositories() # Ensure repositories are initialized
+get_repositories()
+get_security() # Ensure repositories are initialized
 get_clients()       # Ensure clients are initialized
+get_settings()
+
 from routes.webhook import router as webhook_router
 from routes.attendants import router as attendants_router
 from routes.config import router as config_router
