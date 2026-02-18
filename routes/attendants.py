@@ -28,8 +28,9 @@ class AttendantRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/attendants", tags=["Attendants"])
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="attendants/login")
-        self._attendant_service = get_attendant_service()
-        self._security = get_security()
+        # avoid calling dependency factories at import time
+        self._attendant_service = None
+        self._security = None
         self._register_routes()
 
     def _register_routes(self):
@@ -47,8 +48,10 @@ class AttendantRoutes():
         """
         Cria um novo atendente.
         """
-        self._security.verify_permissions(token.credentials, ["admin"])
-        result = await self._attendant_service.create_attendant(attendant.model_dump())
+        security = get_security()
+        attendant_service = get_attendant_service()
+        security.verify_permissions(token.credentials, ["admin"])
+        result = await attendant_service.create_attendant(attendant.model_dump())
         return {"id": str(result), "message": "Attendant created successfully"}
 
     async def login(self,
@@ -57,7 +60,8 @@ class AttendantRoutes():
         """
         Realiza login e retorna token JWT.
         """
-        attendant = await self._attendant_service.authenticate_attendant(self_form_data.username, self_form_data.password)
+        attendant_service = get_attendant_service()
+        attendant = await attendant_service.authenticate_attendant(self_form_data.username, self_form_data.password)
         if not attendant:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -70,13 +74,15 @@ class AttendantRoutes():
     async def logout(self,
         attendant_id: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
     ):
-        await self._attendant_service.logout(attendant_id)
+        attendant_service = get_attendant_service()
+        await attendant_service.logout(attendant_id)
 
     async def verify_token(self,
         token: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
         attendant_id: str = Depends(OAuth2PasswordBearer(tokenUrl="attendants/login")),
     ):
-        token = await self._attendant_service.verify_token(token, attendant_id)
+        attendant_service = get_attendant_service()
+        token = await attendant_service.verify_token(token, attendant_id)
 
     async def list_attendants(self,
         token: HTTPAuthorizationCredentials = Depends(fastapi_security),
@@ -84,8 +90,10 @@ class AttendantRoutes():
         """
         Lista todos os atendentes.
         """
-        self._security.verify_permissions(token.credentials, ["admin"])
-        attendants = await self._attendant_service.list_attendants()
+        security = get_security()
+        attendant_service = get_attendant_service()
+        security.verify_permissions(token.credentials, ["admin"])
+        attendants = await attendant_service.list_attendants()
         for att in attendants:
             if "_id" in att:
                 att["_id"] = str(att["_id"])

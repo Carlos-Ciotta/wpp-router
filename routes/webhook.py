@@ -10,9 +10,10 @@ fastapi_security = HTTPBearer()
 class WebhookRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
-        self._security = get_security()
-        self._client = get_clients()["whatsapp"]
-        self._chat_service = get_chat_service()
+        # avoid calling dependency factories at import time
+        self._security = None
+        self._client = None
+        self._chat_service = None
         self._register_routes()
 
     def _register_routes(self):
@@ -26,8 +27,10 @@ class WebhookRoutes():
     ):
         """Lista templates do repositório local."""
         try:
-            self._security.verify_permission(token.credentials, ["admin", "user"])
-            return await self._chat_service.list_templates()
+            security = get_security()
+            chat_service = get_chat_service()
+            security.verify_permission(token.credentials, ["admin", "user"])
+            return await chat_service.list_templates()
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -36,15 +39,19 @@ class WebhookRoutes():
     ):
         """Força sincronização de templates do WhatsApp para o repositório local."""
         try:
-            self._security.verify_permission(token.credentials, ["admin", "user"])
-            templates = await self._chat_service.sync_templates_from_whatsapp()
+            security = get_security()
+            chat_service = get_chat_service()
+            security.verify_permission(token.credentials, ["admin", "user"])
+            templates = await chat_service.sync_templates_from_whatsapp()
             return {"count": len(templates), "message": "Templates sincronizados com sucesso."}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
     async def verify_webhook(self, request: Request,):
         """Verificação do webhook (GET)"""
-        return await self._client.verify_webhook(request)
+        clients = get_clients()
+        client = clients["whatsapp"]
+        return await client.verify_webhook(request)
 
     async def receive_webhook(
         self,
@@ -55,11 +62,13 @@ class WebhookRoutes():
             data = await request.json()
             
             # O processamento e salvamento é feito pelo client/repo
-            messages = await self._client.process_webhook(data)
+            client = get_clients()["whatsapp"]
+            messages = await client.process_webhook(data)
             
             # Processamento da lógica de chat (Automação, Menus, Atribuição)
             for msg in messages:
-                await self._chat_service.process_incoming_message(msg)
+                chat_service = get_chat_service()
+                await chat_service.process_incoming_message(msg)
             
             # Log simplificado
             if messages:

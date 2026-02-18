@@ -8,8 +8,9 @@ fastapi_security = HTTPBearer()
 class ConfigRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/config", tags=["Configuration"])
-        self._security = get_security()
-        self._config_service = get_config_service()
+        # avoid calling dependency factories at import time
+        self._security = None
+        self._config_service = None
         self._register_routes()
 
     def _register_routes(self):
@@ -22,9 +23,11 @@ class ConfigRoutes():
         """
         Retorna a configuração atual do chat (mensagens, botões).
         """
-        self._security.verify_permission(token.credentials, ["user", "admin"])
-        
-        return self._config_service.get_config()
+        security = get_security()
+        config_service = get_config_service()
+        security.verify_permission(token.credentials, ["user", "admin"])
+
+        return config_service.get_config()
 
     async def update_config(self,
         config: ChatConfig = Body(...),
@@ -33,9 +36,11 @@ class ConfigRoutes():
         """
         Atualiza a configuração do chat.
         """
-        self._security.verify_permission(token.credentials, ["user", "admin"])
-        
-        return self._config_service.save_config(config)
+        security = get_security()
+        config_service = get_config_service()
+        security.verify_permission(token.credentials, ["user", "admin"])
+
+        return config_service.save_config(config)
 
 
 _routes = ConfigRoutes()

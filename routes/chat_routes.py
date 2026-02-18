@@ -35,8 +35,9 @@ class TransferChatRequest(BaseModel):
 fastapi_security = HTTPBearer()
 class ChatRoutes():
     def __init__(self):
-        self._chat_service = get_chat_service()
-        self._security = get_security()
+        # avoid calling dependency factories at import time
+        self._chat_service = None
+        self._security = None
         self.router = APIRouter(prefix="/chat", tags=["Chats"])
         self._register_routes()
 
@@ -56,10 +57,12 @@ class ChatRoutes():
             It also can reopen a closed chat"""
         
         try:
-            self._security.verify_permissions(token.credentials, ["user", "admin"])
-            chat = await self._chat_service.start_chat(payload.phone_number, payload.attendant_id, payload.category)
+            security = get_security()
+            chat_service = get_chat_service()
+            security.verify_permissions(token.credentials, ["user", "admin"])
+            chat = await chat_service.start_chat(payload.phone_number, payload.attendant_id, payload.category)
             return {"message": "Sessão iniciada com sucesso", "chat": chat, 
-                    "free_message":bool(self._chat_service.can_send_free_message(payload.phone_number))}
+                "free_message":bool(chat_service.can_send_free_message(payload.phone_number))}
         
         except ValueError as e:
             raise HTTPException(400, "Input invalid")
@@ -72,10 +75,12 @@ class ChatRoutes():
         """Transfer an active chat to another attendant. Permission: user or admin."""
         
         try:
-            self._security.verify_permissions(token.credentials, ["user", "admin"])
-            await self._chat_service.transfer_chat(payload.phone_number, payload.new_attendant_id)
+            security = get_security()
+            chat_service = get_chat_service()
+            security.verify_permissions(token.credentials, ["user", "admin"])
+            await chat_service.transfer_chat(payload.phone_number, payload.new_attendant_id)
             return {"message": "Atendimento transferido com sucesso", 
-                    "free_message":bool(self._chat_service.can_send_free_message(payload.phone_number))}
+                "free_message":bool(chat_service.can_send_free_message(payload.phone_number))}
         
         except ValueError as e:
             raise HTTPException(400, str(e))
@@ -88,8 +93,10 @@ class ChatRoutes():
             """Finish an active chat. Permission: user or admin."""
             
             try:
-                self._security.verify_permissions(token.credentials, ["user", "admin"])
-                await self._chat_service.finish_chat(phone_number)
+                security = get_security()
+                chat_service = get_chat_service()
+                security.verify_permissions(token.credentials, ["user", "admin"])
+                await chat_service.finish_chat(phone_number)
                 return {"message": "Sessão finalizada com sucesso"}
             
             except ValueError as e:
@@ -101,8 +108,10 @@ class ChatRoutes():
                             token:HTTPAuthorizationCredentials = Depends(fastapi_security))->List[dict]:
         """Get the last chat of each client in the system. Permission: admin."""
         try:
-            self._security.verify_permissions(token.credentials, ["admin"])
-            return await self._chat_service.list_chats()
+            security = get_security()
+            chat_service = get_chat_service()
+            security.verify_permissions(token.credentials, ["admin"])
+            return await chat_service.list_chats()
         
         except Exception as e:
             raise HTTPException(500, str(e))
@@ -119,12 +128,16 @@ class ChatRoutes():
             await websocket.close(code=1008) # Policy Violation
             return None
         try:
+            # Resolve dependencies at runtime for websocket
+            security = get_security()
+            chat_service = get_chat_service()
+
             # 3. Limpar o prefixo 'Bearer ' se existir
             # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
             token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
             # 4. Validar o token (usando a string limpa)
-            decoded = self._security.verify_permission(token, required_roles=["admin"])
+            decoded = security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
@@ -145,7 +158,7 @@ class ChatRoutes():
                 action = data.get("action") # ex: "get_chats", "update_chat"
 
                 try:
-                    result = await self._chat_service.list_chats()
+                    result = await chat_service.list_chats()
 
                     response = {
                         "type": "success",
@@ -178,12 +191,16 @@ class ChatRoutes():
             await websocket.close(code=1008) # Policy Violation
             return None
         try:
+            # Resolve dependencies at runtime for websocket
+            security = get_security()
+            chat_service = get_chat_service()
+
             # 3. Limpar o prefixo 'Bearer ' se existir
             # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
             token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
             # 4. Validar o token (usando a string limpa)
-            decoded = self._security.verify_permission(token, required_roles=["admin"])
+            decoded = security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
@@ -205,7 +222,7 @@ class ChatRoutes():
                 action = data.get("action") # ex: "get_chats", "update_chat"
 
                 try:
-                    result = await self._chat_service.get_chats_by_attendant(attendant_id)
+                    result = await chat_service.get_chats_by_attendant(attendant_id)
 
                     response = {
                         "type": "success",

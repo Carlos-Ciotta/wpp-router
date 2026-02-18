@@ -9,8 +9,9 @@ fastapi_security = HTTPBearer()
 class ContactsRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/contacts", tags=["Contacts"])
-        self._contact_service = get_contact_service()
-        self._security = get_security()
+        # avoid calling dependency factories at import time
+        self._contact_service = None
+        self._security = None
         self._register_routes()
 
     def _register_routes(self):
@@ -29,8 +30,10 @@ class ContactsRoutes():
         Lista contatos ordenados pela última mensagem recebida.
         """
         try:
-            self._security.verify_permission(token.credentials, ["user", "admin"])
-            return await self._contact_service.list_contacts(limit, skip)
+            security = get_security()
+            contact_service = get_contact_service()
+            security.verify_permission(token.credentials, ["user", "admin"])
+            return await contact_service.list_contacts(limit, skip)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -43,8 +46,10 @@ class ContactsRoutes():
         Busca detalhes de um contato específico.
         """
         try:
-            self._security.verify_permission(token.credentials, ["user", "admin"])
-            contact = await self._contact_service.get_by_phone(phone)
+            security = get_security()
+            contact_service = get_contact_service()
+            security.verify_permission(token.credentials, ["user", "admin"])
+            contact = await contact_service.get_by_phone(phone)
             if not contact:
                 raise HTTPException(status_code=404, detail="Contato não encontrado")
             return contact
@@ -62,8 +67,10 @@ class ContactsRoutes():
         Deleta um contato.
         """
         try:
-            self._security.verify_permission(token.credentials, ["admin"])
-            await self._contact_service.delete_contact(phone)
+            security = get_security()
+            contact_service = get_contact_service()
+            security.verify_permission(token.credentials, ["admin"])
+            await contact_service.delete_contact(phone)
             return {"message": "Contato deletado com sucesso"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -76,8 +83,10 @@ class ContactsRoutes():
         Registra um novo contato.
         """
         try:
-            self._security.verify_permission(token.credentials, ["admin"])
-            result = await self._contact_service.upsert_contact(contact.model_dump())
+            security = get_security()
+            contact_service = get_contact_service()
+            security.verify_permission(token.credentials, ["admin"])
+            result = await contact_service.upsert_contact(contact.model_dump())
             return {"id": str(result), "message": "Contato criado com sucesso"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
