@@ -1,49 +1,50 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Body
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import List
 from domain.contact.contact import Contact
-from repositories.contact import ContactRepository
-from core.dependencies import get_contact_repository
-from utils.auth import PermissionChecker
+from core.dependencies import get_contact_service, get_security
 
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
-
+fastapi_security = HTTPBearer()
 
 class ContactsRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/contacts", tags=["Contacts"])
+        self._contact_service = get_contact_service()
+        self._security = get_security()
         self._register_routes()
 
     def _register_routes(self):
-        self.router.add_api_route("/", self.list_contacts, methods=["GET"], response_model=List[Contact])
-        self.router.add_api_route("/{phone}", self.get_contact, methods=["GET"], response_model=Contact)
-
+        self.router.add_api_route("/", self.list_contacts, methods=["GET"], response_model=List[Contact], status_code=status.HTTP_200_OK)
+        self.router.add_api_route("/", self.get_contact, methods=["GET"], response_model=Contact, status_code=status.HTTP_200_OK)
+        self.router.add_api_route("/delete", self.delete_contact, methods=["DELETE"], status_code=status.HTTP_200_OK)
+        self.router.add_api_route("/register", self.create_contact, methods=["POST"], status_code=status.HTTP_200_OK)
+    
     async def list_contacts(
         self,
-        limit: int = Query(50, le=100, description="Limite de contatos"),
-        skip: int = 0,
-        token: str = Depends(user_permission),
-        repo: ContactRepository = Depends(get_contact_repository)
+        limit: int = Query(...,default = 300, description="Limite de contatos"),
+        skip: int = Query(...,default = 0, description="Número de contatos a pular"),
+        token: HTTPAuthorizationCredentials = Depends(fastapi_security),
     ):
         """
         Lista contatos ordenados pela última mensagem recebida.
         """
         try:
-            return await repo.list_contacts(limit, skip)
+            self._security.verify_permission(token.credentials, ["user", "admin"])
+            return await self._contact_service.list_contacts(limit, skip)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
     async def get_contact(
         self,
-        phone: str,
-        token: str = Depends(user_permission),
-        repo: ContactRepository = Depends(get_contact_repository)
+        phone: str = Query(..., description="Número de telefone do contato"),
+        token: HTTPAuthorizationCredentials = Depends(fastapi_security),
     ):
         """
         Busca detalhes de um contato específico.
         """
         try:
-            contact = await repo.get_by_phone(phone)
+            self._security.verify_permission(token.credentials, ["user", "admin"])
+            contact = await self._contact_service.get_by_phone(phone)
             if not contact:
                 raise HTTPException(status_code=404, detail="Contato não encontrado")
             return contact
@@ -52,6 +53,34 @@ class ContactsRoutes():
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-
+    async def delete_contact(
+        self,
+        phone: str = Query(..., description="Número de telefone do contato a ser deletado"),
+        token: HTTPAuthorizationCredentials = Depends(fastapi_security),
+    ):
+        """
+        Deleta um contato.
+        """
+        try:
+            self._security.verify_permission(token.credentials, ["admin"])
+            await self._contact_service.delete_contact(phone)
+            return {"message": "Contato deletado com sucesso"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    async def create_contact(
+            self,
+            contact: Contact = Body(...),
+            token: HTTPAuthorizationCredentials = Depends(fastapi_security),
+    ):
+        """
+        Registra um novo contato.
+        """
+        try:
+            self._security.verify_permission(token.credentials, ["admin"])
+            result = await self._contact_service.upsert_contact(contact.model_dump())
+            return {"id": str(result), "message": "Contato criado com sucesso"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        
 _routes = ContactsRoutes()
 router = _routes.router

@@ -1,5 +1,13 @@
 from typing import List
 from pymongo import UpdateOne
+from bson import ObjectId
+
+def _serialize_doc(doc: dict) -> dict:
+    if doc is None:
+        return None
+    if "_id" in doc and isinstance(doc["_id"], ObjectId):
+        doc["_id"] = str(doc["_id"])
+    return doc
 
 class MessageRepository():
     def __init__(self, collection) -> None:
@@ -32,6 +40,19 @@ class MessageRepository():
         result = await self._collection.bulk_write(operations, ordered=False)
         return result.modified_count
     
-    async def get_messages_by_phone_number(self, phone_number: str, limit:int, skip:int) -> List[dict]:
-        cursor = self._collection.find({"phone_number": phone_number}).sort("timestamp", -1).skip(skip).limit(limit)
-        return await cursor.to_list()
+    async def get_messages_by_phone_number(self, phone_number: str, limit:int, skip:int):
+        cursor = self._collection.find({"phone_number": phone_number})\
+            .sort("timestamp", -1)\
+            .skip(skip)\
+            .limit(limit)
+        async for message in cursor:
+            yield _serialize_doc(message)
+    
+    async def get_messages_by_list_phone_numbers(self, phone_numbers: List[str], limit: int, skip: int):
+        cursor = self._collection.find({"phone_number": {"$in": phone_numbers}})\
+            .sort("timestamp", -1)\
+            .skip(skip)\
+            .limit(limit)\
+
+        async for message in cursor:
+            yield _serialize_doc(message)

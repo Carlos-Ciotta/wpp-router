@@ -1,80 +1,83 @@
 from fastapi import APIRouter, WebSocket
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from core.dependencies import get_message_service, get_security
 import json
-from core.dependencies import get_chat_service
-from utils.auth import PermissionChecker # Importe seu ConnectionManager global
 from core.websocket import manager
-from handlers.ws.messages import HANDLERS
 
-# Instâncias de permissão
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
-
+fastapi_security = HTTPBearer()
 
 class MessagesRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/messages", tags=["Messages"])
+        self._security = get_security()
+        self._message_service = get_message_service()
         self._register_routes()
 
     def _register_routes(self):
         # Register websocket route
-        self.router.websocket("/ws")(self.chat_endpoint)
+        self.router.websocket("/ws", self.get_message_by_phone_ws)
 
-    async def chat_endpoint(self, websocket: WebSocket):
-        """
-        Retorna a última sessão de cada cliente atendido por um atendente específico.
-        """
+    async def get_message_by_phone_ws(self,
+                                  websocket: WebSocket):
+        """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
         # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
-        token = websocket.query_params.get("token")
+        await websocket.accept()
 
+        auth_header = websocket.headers.get("authorization")
+
+        if not auth_header:
+            await websocket.close(code=1008) # Policy Violation
+            return None
+        try:
+            # 3. Limpar o prefixo 'Bearer ' se existir
+            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
+            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+
+            # 4. Validar o token (usando a string limpa)
+            decoded = self._security.verify_permission(token, required_roles=["admin"])
+            attendant_id = decoded.get("_id")
+            
+        except Exception as e:
+            # Se o token for inválido ou não tiver permissão
+            await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            await websocket.close(code=1008)
+            return None
+        
         if not token:
             await websocket.close(code=1008)
-            return
-
-        # PermissionChecker is async and expects a `websocket` or `request`.
-        payload = await user_permission(websocket=websocket)
-        attendant_id = payload.get("_id")
-        chat_service = await get_chat_service()
+            return None
 
         await manager.connect(attendant_id, websocket)
-        
-        while True:
-            raw_data = await websocket.receive_text()
-            data = json.loads(raw_data)
+        try: 
+            while True:
+                raw_data = await websocket.receive_text()
+                data = json.loads(raw_data)
+                
+                action = data.get("action") # ex: "get_chats", "update_chat"
 
-            action = data.get("action")
-            payload = data.get("payload", {})
+                try:
+                    result = await self._message_service.get_messages_by_phone(raw_data.get("phone"))
 
-            handler = HANDLERS.get(action)
+                    response = {
+                        "type": "success",
+                        "action": action,
+                        "data": result
+                    }
 
-            if not handler:
-                await manager.send_personal_message({
-                    "type": "error",
-                    "message": f"Ação inválida: {action}"
-                }, attendant_id)
-                continue
+                    await manager.send_personal_message(response, attendant_id)
 
-            try:
-                result = await handler(chat_service, payload)
+                except Exception as e:
+                    await manager.send_personal_message({
+                        "type": "error",
+                        "action": action,
+                        "message": str(e)
+                    }, attendant_id)
 
-                response = {
-                    "type": "success",
-                    "action": action
-                }
-
-                if action == "get_messages":
-                    response["data"] = result
-
-                await manager.send_personal_message(response, attendant_id)
-
-            except Exception as e:
-                await manager.send_personal_message({
-                    "type": "error",
-                    "action": action,
-                    "message": str(e)
-                }, attendant_id)
-
-                manager.disconnect(attendant_id)
-                break
+                    manager.disconnect(attendant_id)
+                    break
+        except Exception as e:
+            manager.disconnect(attendant_id)
+            return None
 
 
 _routes = MessagesRoutes()

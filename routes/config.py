@@ -1,40 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status, Body
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from domain.config.chat_config import ChatConfig
-from repositories.config import ConfigRepository
-from core.dependencies import get_config_repository
-from utils.auth import PermissionChecker
+from core.dependencies import get_config_service, get_security
 
-admin_permission = PermissionChecker(allowed_permissions=["admin"])
-user_permission = PermissionChecker(allowed_permissions=["user", "admin"])
-
+fastapi_security = HTTPBearer()
 
 class ConfigRoutes():
     def __init__(self):
         self.router = APIRouter(prefix="/config", tags=["Configuration"])
+        self._security = get_security()
+        self._config_service = get_config_service()
         self._register_routes()
 
     def _register_routes(self):
-        self.router.add_api_route("/", self.get_config, methods=["GET"], response_model=ChatConfig)
-        self.router.add_api_route("/", self.update_config, methods=["POST"], response_model=ChatConfig)
+        self.router.add_api_route("/", self.get_config, methods=["GET"], response_model=ChatConfig, status_code=status.HTTP_200_OK)
+        self.router.add_api_route("/", self.update_config, methods=["POST"], response_model=ChatConfig, status_code=status.HTTP_200_OK)
 
     async def get_config(self,
-        repo: ConfigRepository = Depends(get_config_repository),
-        token: str = Depends(admin_permission),
+        token: HTTPAuthorizationCredentials = Depends(fastapi_security),
     ):
         """
         Retorna a configuração atual do chat (mensagens, botões).
         """
-        return await repo.get_config()
+        self._security.verify_permission(token.credentials, ["user", "admin"])
+        
+        return self._config_service.get_config()
 
     async def update_config(self,
-        config: ChatConfig,
-        token: str = Depends(admin_permission),
-        repo: ConfigRepository = Depends(get_config_repository)
+        config: ChatConfig = Body(...),
+        token: HTTPAuthorizationCredentials = Depends(fastapi_security),
     ):
         """
         Atualiza a configuração do chat.
         """
-        return await repo.save_config(config)
+        self._security.verify_permission(token.credentials, ["user", "admin"])
+        
+        return self._config_service.save_config(config)
 
 
 _routes = ConfigRoutes()

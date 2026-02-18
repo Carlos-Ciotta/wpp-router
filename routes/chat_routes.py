@@ -111,15 +111,31 @@ class ChatRoutes():
                                   websocket: WebSocket):
         """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
         # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
-        token = websocket.headers.get("authorization")
+        await websocket.accept()
 
+        auth_header = websocket.headers.get("authorization")
+
+        if not auth_header:
+            await websocket.close(code=1008) # Policy Violation
+            return None
+        try:
+            # 3. Limpar o prefixo 'Bearer ' se existir
+            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
+            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+
+            # 4. Validar o token (usando a string limpa)
+            decoded = self._security.verify_permission(token, required_roles=["admin"])
+            attendant_id = decoded.get("_id")
+            
+        except Exception as e:
+            # Se o token for inválido ou não tiver permissão
+            await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            await websocket.close(code=1008)
+            return None
+        
         if not token:
             await websocket.close(code=1008)
-            return
-        
-        decoded = self._security.verify_permissions(token.credentials, required_roles=["admin"])
-
-        attendant_id = decoded.get("_id")
+            return None
         await manager.connect(attendant_id, websocket)
         try: 
             while True:
@@ -154,15 +170,31 @@ class ChatRoutes():
     async def get_by_attendant_ws(self,
                                   websocket: WebSocket):
         """Websocket endpoint to get the last chat of each client attended by a specific attendant. Permission: user or admin."""
-        token = websocket.headers.get("authorization")
+        await websocket.accept()
 
+        auth_header = websocket.headers.get("authorization")
+
+        if not auth_header:
+            await websocket.close(code=1008) # Policy Violation
+            return None
+        try:
+            # 3. Limpar o prefixo 'Bearer ' se existir
+            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
+            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+
+            # 4. Validar o token (usando a string limpa)
+            decoded = self._security.verify_permission(token, required_roles=["admin"])
+            attendant_id = decoded.get("_id")
+            
+        except Exception as e:
+            # Se o token for inválido ou não tiver permissão
+            await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            await websocket.close(code=1008)
+            return None
+        
         if not token:
             await websocket.close(code=1008)
-            return
-        
-        decoded = self._security.verify_permissions(token.credentials, required_roles=["user"])
-
-        attendant_id = decoded.get("_id")
+            return None
         await manager.connect(attendant_id, websocket)
 
         try:

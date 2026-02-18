@@ -15,6 +15,7 @@ from services.attendant_service import AttendantService
 from services.chat_service import ChatService
 from services.contact_service import ContactService
 from services.message_service import MessageService
+from services.config_service import ConfigService
 
 from client.whatsapp.V24 import WhatsAppClient
 from utils.cache import Cache
@@ -59,10 +60,15 @@ def get_repositories():
         )
     }
 
-async def get_security():
+def get_security():
     """Retorna uma instância do Security."""
     return Security()
 
+def get_config_service():
+    """Retorna uma instância do ConfigService."""
+    return ConfigService(
+        repo=(get_repositories())["config_repository"]
+    )
 def get_clients():
 	"""Retorna todos os clients instanciados."""
 	return {

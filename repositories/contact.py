@@ -53,3 +53,6 @@ class ContactRepository:
         async for doc in cursor:
             contacts.append(_serialize_doc(doc))
         return contacts
+
+    async def delete_contact(self, phone: str) -> None:
+        return await self._collection.delete_one({"_id": phone})
