@@ -5,7 +5,7 @@ from core.websocket import manager
 
 class MessagesRoutes():
     def __init__(self):
-        self.router = APIRouter()
+        self.router = APIRouter(prefix="/messages")
         # avoid calling dependency factories at import time
         self._security = None
         self._message_service = None
@@ -13,13 +13,10 @@ class MessagesRoutes():
 
     def _register_routes(self):
         # Register websocket route
-        self.router.websocket("/messages/ws")(self.get_message_by_phone_ws)
+        self.router.websocket("/ws", self.get_message_by_phone_ws)
 
     async def get_message_by_phone_ws(self,
                                   websocket: WebSocket):
-        await websocket.accept()
-        await websocket.send_text("Conexão direta funcionou!")
-        await websocket.close()
         """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
         # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
         await websocket.accept()

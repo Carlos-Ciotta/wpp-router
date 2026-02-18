@@ -8,6 +8,7 @@ import json
 
 from core.websocket import manager
 from core.dependencies import get_chat_service, get_security
+import logging
 
 # --- Schemas ---
 class ChatResponse(BaseModel):
@@ -124,25 +125,32 @@ class ChatRoutes():
 
         auth_header = websocket.headers.get("authorization")
 
-        if not auth_header:
+        # Fallback: some clients/browsers não permitem enviar headers no handshake.
+        # Neste caso aceitaremos `?token=<token>` como alternativa para autenticação.
+        token = None
+        if auth_header:
+            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+        else:
+            token = websocket.query_params.get("token")
+
+        if not token:
             await websocket.close(code=1008) # Policy Violation
             return None
         try:
             # Resolve dependencies at runtime for websocket
             security = get_security()
             chat_service = get_chat_service()
-
-            # 3. Limpar o prefixo 'Bearer ' se existir
-            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
-            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
-
             # 4. Validar o token (usando a string limpa)
             decoded = await security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
+            logging.exception("WebSocket auth failure")
             # Se o token for inválido ou não tiver permissão
-            await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            try:
+                await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            except Exception:
+                pass
             await websocket.close(code=1008)
             return None
         
@@ -195,17 +203,16 @@ class ChatRoutes():
             security = get_security()
             chat_service = get_chat_service()
 
-            # 3. Limpar o prefixo 'Bearer ' se existir
-            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
-            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
-
-            # 4. Validar o token (usando a string limpa)
+            # 3. Aceita token via header ou query-param (já normalizado acima)
             decoded = await security.verify_permission(token, required_roles=["admin"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
-            # Se o token for inválido ou não tiver permissão
-            await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            logging.exception("WebSocket auth failure")
+            try:
+                await websocket.send_json({"type": "error", "message": "Unauthorized"})
+            except Exception:
+                pass
             await websocket.close(code=1008)
             return None
         
