@@ -24,7 +24,14 @@ class Security():
         try:
             # Decodifica e verifica assinatura, expiração (exp) e not before (nbf)
             decoded = jwt.decode(token, self._env.SECRET_KEY, algorithms=self._env.ALGORITHM)
-            exists = await self._cache.get(f"auth_token:{str(decoded.get('_id'))}")
+        
+            # 2. Extrair ID e garantir que é string para o Redis
+            user_id = decoded.get("_id")
+            if not user_id:
+                raise HTTPException(401, "Token missing user identifier")
+                
+            user_id_str = str(user_id)
+            exists = await self._cache.get(f"auth_token:{user_id_str}")
 
             if not exists:
                 raise HTTPException(401, "Invalid Token")
