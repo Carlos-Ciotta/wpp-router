@@ -391,15 +391,12 @@ class ChatService:
         try:
             # Determine message type from parsed domain model
             msg_dict = message if isinstance(message, dict) else getattr(message, "__dict__", {})
-            msg_type = msg_dict.get("type")
-
-            if msg_type == "status":
+            msg_type = msg_dict.get("event_type")
+            phone = message.get("from_number") if isinstance(message, dict) else getattr(message, "from_number", None)
+                        
+            if msg_type == "status_update":
                 return None  # Status são tratados em outro lugar
 
-            if msg_type != "message":
-                return None
-
-            phone = message.get("from") if isinstance(message, dict) else getattr(message, "from", None)
             profile_name = msg_dict.get("profile", {}).get("name")
             await self._ensure_contact_synced(phone, profile_name)
 

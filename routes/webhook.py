@@ -64,10 +64,9 @@ class WebhookRoutes():
             # O processamento e salvamento é feito pelo client/repo
             client = get_clients()["whatsapp"]
             messages = await client.process_webhook(data)
-            
+            chat_service = get_chat_service()
             # Processamento da lógica de chat (Automação, Menus, Atribuição)
             for msg in messages:
-                chat_service = get_chat_service()
                 await chat_service.process_incoming_message(msg)
             
             # Log simplificado
