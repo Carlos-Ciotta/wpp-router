@@ -12,16 +12,16 @@ from core.dependencies import get_clients, get_cache, get_repositories
 
 env = get_environment()
 
-
+get_cache()         # Ensure cache is initialized
+get_repositories() # Ensure repositories are initialized
+get_clients()       # Ensure clients are initialized
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup and shutdown."""
     
     # Startup s
     await mongo_manager.connect()
-    await get_cache()         # Ensure cache is initialized
-    await get_repositories() # Ensure repositories are initialized
-    await get_clients()       # Ensure clients are initialized
+
     try:
         db = mongo_manager.get_db(db_name=env.DATABASE_NAME)
         await ensure_indexes(db)
