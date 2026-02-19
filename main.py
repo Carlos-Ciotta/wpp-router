@@ -1,11 +1,9 @@
 """Main application for the Documents service with async RabbitMQ integration."""
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from routes.messages import get_message_ws
-
-import json
 from routes.chat_routes import admin_chat_ws, attendant_chat_ws
 from contextlib import asynccontextmanager
 from core.websocket import manager
@@ -20,12 +18,10 @@ from core.dependencies import (get_clients,
                                 get_config_service,
                                 get_attendant_service,
                                 get_contact_service,
-                                get_db_collection,
                                 get_message_service,
                                 get_settings)
 
 env = get_environment()
-import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -86,6 +82,7 @@ app.include_router(config_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
+
 
 @app.websocket("/messages/ws")
 async def messages_websocket(websocket: WebSocket):
