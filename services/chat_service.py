@@ -594,14 +594,26 @@ class ChatService:
         search_phone = self._normalize_phone(phone)
         attendant = None
         
-        # 1. Tentar Atendente Fixo/Fidelizado
+        # 1. Carregamos as dependências de decisão
+        is_company_open = self._is_working_hour(config.working_hours)
         fixed_attendant = await self._attendant_service.get_by_clients_and_sector(search_phone, sector_name)
-        
-        if fixed_attendant and self._is_working_hour(fixed_attendant.get("working_hours")):
-            attendant = fixed_attendant
-        else:
-            # 2. Se não tem fidelizado ou está fora de hora, busca o próximo do rodízio
+
+        # 2. Lógica de Decisão por Hierarquia
+        # REGRA 1: Se a empresa está aberta e existe um atendente fixo disponível, ele é a prioridade absoluta.
+        if is_company_open and fixed_attendant:
+            if self._is_working_hour(fixed_attendant.get("working_hours")):
+                attendant = fixed_attendant
+
+        # REGRA 2: Se não caiu na Regra 1 (empresa fechada, fixo offline ou inexistente), 
+        # tentamos o rodízio (Round Robin).
+        if not attendant:
             attendant = await self._get_next_attendant(sector_name)
+
+        # REGRA 3: Se mesmo no rodízio não houver ninguém disponível (ex: todos offline),
+        # e existia um atendente fixo, usamos ele como fallback final (mesmo offline) 
+        # para que o chat não fique "órfão".
+        if not attendant and fixed_attendant:
+            attendant = fixed_attendant
 
         # Se ninguém puder atender (nem fidelizado, nem equipe disponível)
         if not attendant:
