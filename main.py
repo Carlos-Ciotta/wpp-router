@@ -1,6 +1,6 @@
 """Main application for the Documents service with async RabbitMQ integration."""
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import json
@@ -22,7 +22,7 @@ from core.dependencies import (get_clients,
                                 get_settings)
 
 env = get_environment()
-
+import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -86,69 +86,76 @@ app.include_router(contacts_router)
 
 @app.websocket("/messages/ws")
 async def get_message_by_phone_ws(websocket: WebSocket):
-        """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
-        # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
-        await websocket.accept()
-        auth_header = websocket.headers.get("authorization")
-        print(f"DEBUG: Header recebido: {auth_header}")
-        if not auth_header:
-            await websocket.close(code=1008) # Policy Violation
-            return None
-        try:
-            # Resolve dependencies at runtime (websockets can't use Depends inside loop)
-            security = get_security()
-            message_service = get_message_service()
+    await websocket.accept()
+    
+    auth_header = websocket.headers.get("authorization")
+    attendant_id = None
+    stop_event = asyncio.Event() # Sinaliza para as tasks pararem ao desconectar
 
-            # 3. Limpar o prefixo 'Bearer ' se existir
-            # Diferente do Depends, aqui recebemos a string bruta: "Bearer <token>"
-            token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
-
-            # 4. Validar o token (usando a string limpa)
-            print(f"DEBUG: Token extraído para validação: {token}, tipo: {type(token)}")
-            decoded = await security.verify_permission(token, allowed_permissions=["admin", "user"])
-            attendant_id = decoded.get("_id")
-            
-        except Exception as e:
-            # Se o token for inválido ou não tiver permissão
-            await websocket.send_json({"type": "error", "message": "Unauthorized"})
-            await websocket.close(code=1008)
-            return None
+    try:
+        # --- Autenticação e Setup ---
+        security = get_security() # Injeção manual
+        message_service = get_message_service() # Injeção manual
+        token = auth_header.replace("Bearer ", "") if auth_header and "Bearer " in auth_header else auth_header
         
-        if not token:
-            await websocket.close(code=1008)
-            return None
-
+        decoded = await security.verify_permission(token, allowed_permissions=["admin", "user"])
+        attendant_id = str(decoded.get("_id"))
         await manager.connect(attendant_id, websocket)
-        try: 
-            while True:
-                raw_data = await websocket.receive_text()
-                data = json.loads(raw_data)
-                
-                action = data.get("action") # ex: "get_chats", "update_chat"
-                phone = data.get("phone") # número do cliente para buscar mensagens
-                try:
-                    result = await message_service.get_messages_by_phone(phone)
 
-                    response = {
-                        "type": "success",
-                        "action": action,
-                        "data": result
-                    }
+        # --- Handshake Inicial ---
+        # O cliente deve enviar primeiro: {"action": "start", "phone": "..."}
+        raw_init = await websocket.receive_text()
+        init_data = json.loads(raw_init)
+        target_phone = init_data.get("phone")
 
-                    await manager.send_personal_message(response, attendant_id)
+        if not target_phone:
+            await websocket.close(code=1008)
+            return
 
-                except Exception as e:
+        # 1. Carga Inicial (Últimas 50)
+        initial_msgs = await message_service.get_messages_by_phone(target_phone, limit=50)
+        await websocket.send_json({"type": "initial", "data": initial_msgs})
+
+        # --- Task de Watcher (Background) ---
+        async def watch_task():
+            """Task que fica 'pendurada' no banco esperando novas mensagens."""
+            try:
+                async for new_msg in message_service.stream_new_messages(target_phone):
+                    if stop_event.is_set():
+                        break
                     await manager.send_personal_message({
-                        "type": "error",
-                        "action": action,
-                        "message": str(e)
+                        "type": "new_message", 
+                        "data": new_msg
                     }, attendant_id)
+            except Exception as e:
+                print(f"Watcher error: {e}")
 
-                    manager.disconnect(attendant_id)
-                    break
-        except Exception as e:
+        # Inicia o monitoramento em paralelo
+        bg_task = asyncio.create_task(watch_task())
+
+        # --- Loop de Comandos (Ouve o Cliente) ---
+        while True:
+            # Aqui o código fica livre para receber pedidos de 'histórico'
+            client_msg = await websocket.receive_text()
+            data = json.loads(client_msg)
+            
+            if data.get("action") == "load_history":
+                last_ts = data.get("last_timestamp")
+                history = await message_service.get_history(target_phone, last_ts)
+                
+                await manager.send_personal_message({
+                    "type": "history",
+                    "data": history
+                }, attendant_id)
+
+    except WebSocketDisconnect:
+        print(f"Conexão encerrada: {attendant_id}")
+    except Exception as e:
+        print(f"Erro no WebSocket: {e}")
+    finally:
+        stop_event.set() # Para a task do banco
+        if attendant_id:
             manager.disconnect(attendant_id)
-            return None
 
 if __name__ == "__main__":
     uvicorn.run(app, host=env.HOST, port=env.PORT)

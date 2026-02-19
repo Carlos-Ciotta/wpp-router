@@ -48,11 +48,20 @@ class MessageRepository():
         async for message in cursor:
             yield _serialize_doc(message)
     
-    async def get_messages_by_list_phone_numbers(self, phone_numbers: List[str], limit: int, skip: int):
-        cursor = self._collection.find({"phone_number": {"$in": phone_numbers}})\
-            .sort("timestamp", -1)\
-            .skip(skip)\
-            .limit(limit)\
+    async def get_messages_before(self, phone: str, timestamp: str, limit: int):
+        """Busca mensagens mais antigas que um determinado ponto."""
+        cursor = self._collection.find({
+            "phone_number": phone,
+            "timestamp": {"$lt": timestamp}
+        }).sort("timestamp", -1).limit(limit)
+        
+        async for msg in cursor:
+            yield _serialize_doc(msg)
 
-        async for message in cursor:
-            yield _serialize_doc(message)
+    async def watch_new_messages(self, phone: str):
+        """Abre um stream de mudanças no MongoDB."""
+        pipeline = [{"$match": {"operationType": "insert", "fullDocument.phone_number": phone}}]
+        # full_document="updateLookup" garante que recebemos o objeto inteiro
+        async with self._collection.watch(pipeline, full_document="updateLookup") as stream:
+            async for change in stream:
+                yield _serialize_doc(change["fullDocument"])
