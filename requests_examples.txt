@@ -15,6 +15,7 @@ Body:
   "password": "senha123",
   "permission": "user",
   "sector": ["Comercial"],
+  "welcome_message":"mensagem de boas vindas",
   "clients": [
     "5511999999999"
   ],
@@ -56,6 +57,14 @@ Method: POST
 Headers: Content-Type: application/json
 Body:
 {
+    "working_hours":{
+    "0": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "1": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "2": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "3": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }],
+    "4": [{ "start": "09:00", "end": "11:00" }, { "start": "13:00", "end": "18:00" }]
+    }
+    "working_hours_message":"Mensagem de ausencia"
     "greeting_message": "Olá! Seja bem-vindo.",
     "greeting_header": "Atendimento Virtual",
     "greeting_buttons": [

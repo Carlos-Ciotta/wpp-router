@@ -21,6 +21,7 @@ class Attendant:
     permission: PermissionLevel = PermissionLevel.USER
     sector: List[str] = field(default_factory=list)
     clients: List[str] = field(default_factory=list)
+    message_shortcuts: Dict[str, str] = field(default_factory=dict)
     welcome_message: Optional[str] = None
     # Key: Day of week (0=Monday, 6=Sunday), Value: List of intervals
     working_hours: Optional[Dict[str, List[WorkInterval]]] = None
