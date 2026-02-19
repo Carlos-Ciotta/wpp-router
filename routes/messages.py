@@ -1,7 +1,82 @@
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from core.dependencies import get_message_service, get_security
 import json
 from core.websocket import manager
+import asyncio
+
+async def get_message_ws(websocket: WebSocket):
+    await websocket.accept()
+    
+    auth_header = websocket.headers.get("authorization")
+    attendant_id = None
+    stop_event = asyncio.Event() # Sinaliza para as tasks pararem ao desconectar
+
+    try:
+        # --- Autenticação e Setup ---
+        security = get_security() # Injeção manual
+        message_service = get_message_service() # Injeção manual
+        token = auth_header.replace("Bearer ", "") if auth_header and "Bearer " in auth_header else auth_header
+        
+        decoded = await security.verify_permission(token, allowed_permissions=["admin", "user"])
+        attendant_id = str(decoded.get("_id"))
+        await manager.connect(attendant_id, websocket)
+
+        # --- Handshake Inicial ---
+        # O cliente deve enviar primeiro: {"action": "start", "phone": "..."}
+        raw_init = await websocket.receive_text()
+        init_data = json.loads(raw_init)
+        target_phone = init_data.get("phone")
+
+        if not target_phone:
+            await websocket.close(code=1008)
+            return
+
+        # 1. Carga Inicial (Últimas 50)
+        initial_msgs = await message_service.get_messages_by_phone(target_phone, limit=50) #{ "action": "start", "phone":"55555555" }
+        await websocket.send_json({"type": "initial", "data": initial_msgs})
+
+        # --- Task de Watcher (Background) ---
+        async def watch_task():
+            """Task que fica 'pendurada' no banco esperando novas mensagens."""
+            try:
+                async for new_msg in message_service.stream_new_messages(target_phone):
+                    if stop_event.is_set():
+                        break
+                    await manager.send_personal_message({
+                        "type": "new_message", 
+                        "data": new_msg
+                    }, attendant_id)
+            except Exception as e:
+                print(f"Watcher error: {e}")
+
+        # Inicia o monitoramento em paralelo
+        bg_task = asyncio.create_task(watch_task())
+
+        # --- Loop de Comandos (Ouve o Cliente) ---
+        while True:
+            # Aqui o código fica livre para receber pedidos de 'histórico'
+            client_msg = await websocket.receive_text()
+            data = json.loads(client_msg)
+            
+            if data.get("action") == "load_history":#{ "action": "load_history", "last_timestamp": "2024-01-01T12:00:00Z" }
+                last_ts = data.get("last_timestamp")
+                history = await message_service.get_history(target_phone, last_ts)
+                
+                await manager.send_personal_message({
+                    "type": "history",
+                    "data": history
+                }, attendant_id)
+
+    except WebSocketDisconnect:
+        print(f"Conexão encerrada: {attendant_id}")
+    except Exception as e:
+        print(f"Erro no WebSocket: {e}")
+    finally:
+        stop_event.set() # Para a task do banco
+        if attendant_id:
+            manager.disconnect(attendant_id)
+        if bg_task:
+            bg_task.cancel()
 
 class MessagesRoutes():
     def __init__(self):

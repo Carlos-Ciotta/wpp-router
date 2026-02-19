@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-from typing import Optional, Any, Union
+from datetime import datetime
+from typing import Optional, Any
 from domain.chat.chats import Chat, ChatStatus
 from repositories.chat_repo import ChatRepository
 from services.attendant_service import AttendantService
@@ -9,7 +9,7 @@ from services.contact_service import ContactService
 from client.whatsapp.V24 import WhatsAppClient
 from domain.config.chat_config import ChatConfig
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 from bson import ObjectId
 from datetime import datetime
@@ -166,7 +166,28 @@ class ChatService:
         except Exception as e:
             logging.error(f"Erro ao listar sessões: {e}")
             return []
-
+    
+    async def load_chat_history(self, attendant_id: Optional[str] = None, page: int = 0, page_size: int = 50) -> List[Dict]:
+        """Carrega o histórico paginado."""
+        try:
+            if attendant_id:
+                await self._validate_objectid(attendant_id)
+            
+            skip = page * page_size
+            return await self.chat_repo.get_chats_paginated(
+                attendant_id=attendant_id, 
+                limit=page_size, 
+                skip=skip
+            )
+        except Exception as e:
+            logging.error(f"Erro ao carregar histórico: {e}")
+            return []
+    # ------------------------
+    # Streams
+    # ------------------------
+    async def stream_chats(self, attendant: Optional[str] = None):
+        async for chat in self.chat_repo.watch_chats(attendant_id=attendant):
+            yield chat
     # ------------------------
     # Sending Messages
     # ------------------------

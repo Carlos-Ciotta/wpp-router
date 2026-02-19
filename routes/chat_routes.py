@@ -1,14 +1,163 @@
 """Rotas para gerenciamento de sessões de chat."""
-from fastapi import APIRouter, HTTPException, WebSocket, Query, Depends
+from fastapi import APIRouter, HTTPException, WebSocket, Query, Depends, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-
+import asyncio
 from typing import List, Optional
 import json
 
 from core.websocket import manager
 from core.dependencies import get_chat_service, get_security
 import logging
+
+async def attendant_chat_ws(websocket: WebSocket):
+    await websocket.accept()
+    
+    auth_header = websocket.headers.get("authorization")
+    attendant_id = None
+    stop_event = asyncio.Event()
+    bg_task = None
+
+    try:
+        # --- 1. Autenticação Segura ---
+        security = get_security()
+        chat_service = get_chat_service()
+        token = auth_header.replace("Bearer ", "") if auth_header and "Bearer " in auth_header else auth_header
+        
+        decoded = await security.verify_permission(token, allowed_permissions=["admin", "user"])
+        attendant_id = str(decoded.get("_id"))
+        await manager.connect(attendant_id, websocket)
+
+        # --- 2. Handshake Inicial ---
+        # Usamos receive_json para facilitar a vida
+        data_init = await websocket.receive_json()
+        target_attendant = data_init.get("attendant")
+
+        # Segurança: Se não for admin, ele só pode ver os PRÓPRIOS chats
+        if "admin" not in decoded.get("permissions", []) and target_attendant != attendant_id:
+            target_attendant = attendant_id 
+
+        # Carga Inicial
+        initial_msgs = await chat_service.get_chats_by_attendant(target_attendant)
+        await websocket.send_json({"type": "initial", "data": initial_msgs})
+
+        # --- 3. Task de Watcher (Push em Tempo Real) ---
+        async def watch_task():
+            try:
+                async for new_msg in chat_service.stream_chats(attendant=target_attendant):
+                    if stop_event.is_set(): break
+                    await manager.send_personal_message({"type": "new_message", "data": new_msg}, attendant_id)
+            except Exception as e:
+                print(f"Watcher error: {e}")
+
+        bg_task = asyncio.create_task(watch_task())
+
+        # --- 4. Loop de Comandos (Ouve o Cliente) ---
+        while True:
+            data = await websocket.receive_json()
+            action = data.get("action")
+
+            if action == "load_more":
+                # Criamos uma task separada para o histórico NÃO travar este loop
+                async def fetch_history():
+                    # Supondo que você use paginação/timestamp aqui
+                    history = await chat_service.get_chats_by_attendant(target_attendant)
+                    await manager.send_personal_message({"type": "history", "data": history}, attendant_id)
+                
+                asyncio.create_task(fetch_history())
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"Erro WS: {e}")
+    finally:
+        stop_event.set()
+        if bg_task: bg_task.cancel() # Limpeza de memória
+        if attendant_id: manager.disconnect(attendant_id)
+
+async def admin_chat_ws(websocket: WebSocket):
+    await websocket.accept()
+    
+    auth_header = websocket.headers.get("authorization")
+    admin_id = None
+    stop_event = asyncio.Event()
+    bg_task = None
+
+    try:
+        # --- 1. Autenticação (Apenas Admin) ---
+        security = get_security()
+        chat_service = get_chat_service()
+        token = auth_header.replace("Bearer ", "") if auth_header and "Bearer " in auth_header else auth_header
+        
+        decoded = await security.verify_permission(token, allowed_permissions=["admin"])
+        admin_id = str(decoded.get("_id"))
+        await manager.connect(admin_id, websocket)
+
+        # --- 2. Carga Inicial (Os chats DO ADMIN logado) ---
+        # Começamos de forma leve, carregando apenas o que pertence ao admin
+        initial_chats = await chat_service.get_chats_by_attendant(admin_id)
+        await websocket.send_json({
+            "type": "initial", 
+            "context": "personal_chats",
+            "data": initial_chats
+        })
+
+        # --- 3. Watcher (Escuta Global de Novos Chats) ---
+        async def watch_task():
+            try:
+                # O admin geralmente precisa ver TUDO que entra em tempo real
+                # Se o stream_chats() for chamado sem filtros, ele monitora a collection toda
+                async for new_msg in chat_service.stream_chats():
+                    if stop_event.is_set(): break
+                    await manager.send_personal_message({
+                        "type": "new_message", 
+                        "data": new_msg
+                    }, admin_id)
+            except Exception as e:
+                print(f"Admin Watcher error: {e}")
+
+        bg_task = asyncio.create_task(watch_task())
+
+        # --- 4. Loop de Comandos (O que o Admin pode solicitar) ---
+        while True:
+            data = await websocket.receive_json()
+            action = data.get("action")
+
+            if action == "load_all_chats":
+                # Carrega TODOS os chats do sistema (Cuidado com o volume: use limit!)
+                all_chats = await chat_service.list_chats() 
+                await websocket.send_json({
+                    "type": "all_chats_load", 
+                    "data": all_chats
+                })
+
+            elif action == "load_all_chats":
+                # Carrega a página 0 de tudo
+                all_chats = await chat_service.load_chat_history(page=0, page_size=100)
+                await websocket.send_json({
+                    "type": "all_chats_load", 
+                    "data": all_chats
+                })
+
+            elif action == "filter_by_attendant":
+                # Admin quer ver os chats de um atendente específico
+                target_id = data.get("attendant_id")
+                filtered_chats = await chat_service.get_chats_by_attendant(target_id)
+                await websocket.send_json({
+                    "type": "filtered_chats",
+                    "attendant_id": target_id,
+                    "data": filtered_chats
+                })
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"Erro no Admin WS: {e}")
+    finally:
+        stop_event.set()
+        if bg_task: bg_task.cancel()
+        if admin_id: manager.disconnect(admin_id)
+
 
 # --- Schemas ---
 class ChatResponse(BaseModel):

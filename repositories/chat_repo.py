@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorCollection
 from domain.chat.chats import  ChatStatus
-from typing import Optional
+from typing import Optional, List, Dict
 from bson import ObjectId
 from pymongo import ReturnDocument
 
@@ -21,6 +21,61 @@ class ChatRepository:
     # ------------------------
     # Query Operations
     # ------------------------
+    async def get_chats_paginated(self, 
+                                 attendant_id: Optional[str] = None, 
+                                 limit: int = 50, 
+                                 skip: int = 0) -> List[Dict]:
+        """Busca chats com paginação, filtrando por atendente se fornecido."""
+        query = {}
+        if attendant_id:
+            query["attendant_id"] = attendant_id
+            
+        cursor = self._collection.find(query)\
+            .sort("last_interaction_at", -1)\
+            .skip(skip)\
+            .limit(limit)
+            
+        results = await cursor.to_list(length=limit)
+        return [_serialize_doc(doc) for doc in results]
+    
+    async def watch_chats(self, attendant_id: Optional[str] = None):
+        """
+        Monitora insert, update e delete de forma segura.
+        """
+        pipeline = []
+        
+        # 1. Definimos as operações permitidas
+        match_conditions = {
+            "operationType": {"$in": ["insert", "update", "replace", "delete"]}
+        }
+
+        # 2. Se for um atendente específico, filtramos o documento alvo
+        if attendant_id:
+            match_conditions["$or"] = [
+                {"fullDocument.attendant_id": attendant_id},
+                # Para o delete, o ID do atendente não está no fullDocument,
+                # então precisamos confiar no documentKey ou remover o filtro de delete para usuários comuns
+                {"operationType": "delete"} 
+            ]
+
+        pipeline.append({"$match": match_conditions})
+
+        async with self._collection.watch(pipeline, full_document="updateLookup") as stream:
+            async for change in stream:
+                op_type = change.get("operationType")
+                
+                if op_type == "delete":
+                    # No delete, enviamos apenas o ID para o front remover da lista
+                    yield {
+                        "action": "delete",
+                        "_id": str(change.get("documentKey", {}).get("_id"))
+                    }
+                else:
+                    doc = _serialize_doc(change.get("fullDocument"))
+                    if doc:
+                        doc["action"] = op_type
+                        yield doc
+
     async def get_active_chats(self):
         try:
             cursor = self._collection.find({
@@ -81,7 +136,7 @@ class ChatRepository:
                 return results[0].get("attendant_id")
         return None
     # CRUD Operations
-
+    
     async def create_chat(self, chat: dict):
         result = await self._collection.find_one_and_update(
             {"phone_number": chat.get("phone_number")},
