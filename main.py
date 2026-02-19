@@ -126,9 +126,9 @@ async def get_message_by_phone_ws(websocket: WebSocket):
                 data = json.loads(raw_data)
                 
                 action = data.get("action") # ex: "get_chats", "update_chat"
-
+                phone = data.get("phone") # número do cliente para buscar mensagens
                 try:
-                    result = await message_service.get_messages_by_phone(raw_data.get("phone"))
+                    result = await message_service.get_messages_by_phone(phone)
 
                     response = {
                         "type": "success",
