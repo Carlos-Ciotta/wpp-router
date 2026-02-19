@@ -88,6 +88,7 @@ app.include_router(contacts_router)
 async def get_message_by_phone_ws(websocket: WebSocket):
         """Websocket endpoint to get the last chat of each client in the system. Permission: admin."""
         # Injetamos o serviço manualmente pois Depends não funciona dentro do while True
+        await websocket.accept()
         auth_header = websocket.headers.get("authorization")
         print(f"DEBUG: Header recebido: {auth_header}")
         if not auth_header:
