@@ -106,7 +106,7 @@ async def get_message_by_phone_ws(websocket: WebSocket):
 
             # 4. Validar o token (usando a string limpa)
             print(f"DEBUG: Token extraído para validação: {token}, tipo: {type(token)}")
-            decoded = await security.verify_permission(token, required_roles=["admin", "user"])
+            decoded = await security.verify_permission(token, allowed_permissions=["admin", "user"])
             attendant_id = decoded.get("_id")
             
         except Exception as e:
